@@ -1,0 +1,25 @@
+# Node / Build
+node_modules/
+apps/**/node_modules/
+.next/
+apps/**/.next/
+
+# API build output
+apps/api/dist/
+
+# Uploaded media (MVP：不提交到仓库)
+apps/api/uploads/
+
+# Environment / secrets
+.env
+.env.*
+apps/api/.env
+
+# Local caches
+.npm-cache/
+apps/**/.npm-cache/
+**/npm-cache/
+
+# OS files
+.DS_Store
+
