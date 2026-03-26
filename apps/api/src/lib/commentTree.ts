@@ -1,7 +1,5 @@
 /**
- * 与圈子页一致：将帖子评论拆成主评论 / 回复并计算层号
- * - 新数据：用 layerMainId 绑定层主，避免同用户名多主评时 @ 匹配错误
- * - 旧数据：无 layerMainId 时仍按正文 @用户名 推断（兼容）
+ * 与前端一致；新回复带 layerMainId，旧数据仍按 @ 推断
  */
 
 function assignLayerFromLegacyAt(
@@ -14,7 +12,6 @@ function assignLayerFromLegacyAt(
     const targetUsername = match[1];
     const candidates = mainComments.filter((c) => c.author.username === targetUsername);
     const before = candidates.filter((c) => new Date(c.createdAt) < new Date(reply.createdAt));
-    // 取时间上离回复最近、且早于回复的那条主评（比 reverse().find 更稳，但仍无法区分同用户多主评）
     const targetMainComment = before.length
       ? before.reduce((prev, cur) =>
           new Date(cur.createdAt) > new Date(prev.createdAt) ? cur : prev

@@ -30,7 +30,6 @@ export default function FavoritesPage() {
           initialStates[post.id] = {
             liked: false,
             favorited: true,
-            shared: false,
           };
         });
         setPostStates(initialStates);
@@ -109,7 +108,6 @@ export default function FavoritesPage() {
                 postStates[post.id] || {
                   liked: false,
                   favorited: true,
-                  shared: false,
                 }
               }
               onUpdatePost={handleUpdatePost}

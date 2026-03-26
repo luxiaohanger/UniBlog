@@ -28,7 +28,7 @@ authRouter.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: { email, username, passwordHash },
-      select: { id: true, email: true, username: true },
+      select: { id: true, email: true, username: true, role: true },
     });
 
     return res.status(201).json({ user });
@@ -74,7 +74,7 @@ authRouter.post('/login', async (req, res) => {
     return res.json({
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, username: user.username },
+      user: { id: user.id, email: user.email, username: user.username, role: user.role },
     });
   } catch (e) {
     console.error(e);
@@ -106,7 +106,7 @@ authRouter.get('/me', requireAuth(), async (req, res) => {
 
   const u = await prisma.user.findUnique({
     where: { id: user.userId },
-    select: { id: true, email: true, username: true },
+    select: { id: true, email: true, username: true, role: true },
   });
 
   return res.json({ user: u });

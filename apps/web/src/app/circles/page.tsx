@@ -28,7 +28,6 @@ export default function CirclesPage() {
           initialStates[post.id] = {
             liked: false,
             favorited: false,
-            shared: false,
           };
         });
         setPostStates(initialStates);
@@ -73,7 +72,6 @@ export default function CirclesPage() {
               postStates[post.id] || {
                 liked: false,
                 favorited: false,
-                shared: false,
               }
             }
             onUpdatePost={(updated) =>

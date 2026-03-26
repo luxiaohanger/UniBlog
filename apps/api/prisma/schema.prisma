@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  /// 权限：user 普通用户；admin 管理员（可删任意帖与单条评论）
+  role         String   @default("user")
+  createdAt    DateTime @default(now())
+
+  refreshTokens RefreshToken[]
+  posts         Post[]
+  comments      Comment[]
+  postLikes     PostLike[]
+  postFavorites PostFavorite[]
+  postShares    PostShare[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author    User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  media     PostMedia[]
+  comments  Comment[]
+  likes     PostLike[]
+  favorites PostFavorite[]
+  shares    PostShare[]
+}
+
+model PostMedia {
+  id        String   @id @default(cuid())
+  postId    String
+  kind      String
+  path      String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+model Comment {
+  id           String    @id @default(cuid())
+  postId       String
+  authorId     String
+  content      String
+  /// 回复所属「层主」评论 id；顶层主评为空
+  layerMainId  String?
+  createdAt    DateTime  @default(now())
+
+  post       Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author     User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  layerRoot  Comment?  @relation("CommentLayer", fields: [layerMainId], references: [id], onDelete: SetNull)
+  layerReplies Comment[] @relation("CommentLayer")
+
+  @@index([postId])
+  @@index([layerMainId])
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+}
+
+model PostFavorite {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+}
+
+model PostShare {
+  id        String   @id @default(cuid())
+  postId    String
+  sharerId  String
+  createdAt DateTime @default(now())
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  sharer User @relation(fields: [sharerId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, sharerId])
+  @@index([postId])
+  @@index([sharerId])
+}

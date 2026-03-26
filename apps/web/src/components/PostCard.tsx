@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useLayoutEffect } from 'react';
+import { useState, useLayoutEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '../lib/http';
 import { getTokens } from '../lib/token';
@@ -14,8 +14,11 @@ type CommentBlock = {
   layers: Record<string, number>;
 };
 
-/** 回复目标为主评论或其层内回复时，找到对应层主评论 id */
+/** 回复目标为主评论或其层内回复时，找到对应层主评论 id（优先用接口返回的 layerMainId） */
 function findMainIdForComment(cb: CommentBlock, targetCommentId: string): string | null {
+  const all = [...cb.mainComments, ...cb.replyComments];
+  const target = all.find((m: any) => m.id === targetCommentId);
+  if (target?.layerMainId) return target.layerMainId as string;
   if (cb.mainComments.some((m: any) => m.id === targetCommentId)) return targetCommentId;
   const layer = cb.layers[targetCommentId];
   if (layer == null) return null;
@@ -52,7 +55,17 @@ interface Post {
 interface PostState {
   liked: boolean;
   favorited: boolean;
-  shared: boolean;
+}
+
+const PREVIEW_LINES = 3;
+const MAX_COMMENT_LINES = 10;
+
+function lineCount(text: string) {
+  return text.split('\n').length;
+}
+
+function clampLines(text: string, maxLines: number) {
+  return text.split('\n').slice(0, maxLines).join('\n');
 }
 
 interface PostCardProps {
@@ -71,12 +84,22 @@ export default function PostCard({
   onUpdatePostState,
   onDeletePost,
 }: PostCardProps) {
+  const isSubmitShortcut = (
+    e: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const native = e.nativeEvent as KeyboardEvent;
+    if (native.isComposing || native.keyCode === 229) return false;
+    return e.key === 'Enter' && (e.ctrlKey || e.metaKey);
+  };
+
   const accessToken = getTokens()?.accessToken ?? null;
-  const { data: meData } = useSWR<{ user: { id: string } }>(
+  const { data: meData } = useSWR<{ user: { id: string; role?: string } }>(
     accessToken ? '/auth/me' : null,
-    () => apiFetch<{ user: { id: string } }>('/auth/me')
+    () => apiFetch<{ user: { id: string; role?: string } }>('/auth/me')
   );
   const isOwnPost = meData?.user?.id === post.author.id;
+  const isAdmin = meData?.user?.role === 'admin';
+  const canDeletePost = isOwnPost || isAdmin;
 
   const [expandedComments, setExpandedComments] = useState(false);
   const [commentBlock, setCommentBlock] = useState<CommentBlock | null>(null);
@@ -85,6 +108,8 @@ export default function PostCard({
   const [visibleMainComments, setVisibleMainComments] = useState(3);
   const [commentInput, setCommentInput] = useState('');
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
+  const [expandedTextMap, setExpandedTextMap] = useState<Record<string, boolean>>({});
+  const [expandedPostText, setExpandedPostText] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ commentId: string } | null>(null);
   const [loadingComments, setLoadingComments] = useState(false);
   const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null);
@@ -92,6 +117,7 @@ export default function PostCard({
   const [favAnim, setFavAnim] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     if (!highlightCommentId) return;
@@ -203,10 +229,16 @@ export default function PostCard({
       prev?.replyComments?.find((c: any) => c.id === commentId);
     if (!targetComment) return;
 
+    const layerMainId = findMainIdForComment(prev, commentId);
+    if (!layerMainId) return;
+
     try {
       const data = await apiFetch<any>(`/social/posts/${post.id}/comments`, {
         method: 'POST',
-        body: { content: `@${targetComment.author.username} ${content}` },
+        body: {
+          content: `@${targetComment.author.username} ${content}`,
+          layerMainId,
+        },
       });
 
       setExpandedComments(true);
@@ -305,6 +337,48 @@ export default function PostCard({
     }
   };
 
+  const handleDeleteComment = async (commentId: string) => {
+    const cb = commentBlock;
+    const isLayerRoot =
+      !!cb && cb.mainComments.some((c: { id: string }) => c.id === commentId);
+
+    if (isLayerRoot && cb) {
+      const layer = cb.layers[commentId];
+      const sameLayerReplies = cb.replyComments.filter(
+        (r: { id: string }) => cb.layers[r.id] === layer
+      );
+      const n = sameLayerReplies.length;
+      const msg =
+        n > 0
+          ? `删除层主会先移除本层 ${n} 条回复，再删除层主（共 ${n + 1} 条）。确定？`
+          : '确定删除这条层主评论？';
+      if (!window.confirm(msg)) return;
+      try {
+        await apiFetch(
+          `/social/posts/${post.id}/comments/layer/${commentId}`,
+          { method: 'DELETE' }
+        );
+        await reloadCommentTreeFromServer();
+      } catch (err) {
+        console.error('删除层评论失败:', err);
+        alert('删除失败，请重试');
+        await reloadCommentTreeFromServer();
+      }
+      return;
+    }
+
+    if (!window.confirm('确定删除这条评论？（仅删除该条）')) return;
+    try {
+      await apiFetch(`/social/posts/${post.id}/comments/${commentId}`, {
+        method: 'DELETE',
+      });
+      await reloadCommentTreeFromServer();
+    } catch (err) {
+      console.error('删除评论失败:', err);
+      alert('删除评论失败，请重试');
+    }
+  };
+
   const hasCommentList =
     commentBlock &&
     (commentBlock.mainComments?.length > 0 ||
@@ -333,7 +407,7 @@ export default function PostCard({
             {new Date(post.createdAt).toLocaleString()}
           </div>
         </div>
-        {isOwnPost && (
+        {canDeletePost && (
           <button
             type="button"
             onClick={() => setShowDeleteConfirm(true)}
@@ -346,33 +420,67 @@ export default function PostCard({
               padding: '4px 10px',
             }}
           >
-            删除
+            {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
           </button>
         )}
       </div>
 
-      <p style={{ marginBottom: '12px' }}>{post.content}</p>
+      <p
+        style={{
+          marginBottom: '8px',
+          whiteSpace: 'pre-wrap',
+          overflow: lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? 'hidden' : 'visible',
+          display:
+            lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? '-webkit-box' : 'block',
+          WebkitLineClamp:
+            lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? PREVIEW_LINES : 'unset',
+          WebkitBoxOrient:
+            lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? 'vertical' : 'unset',
+        }}
+      >
+        {post.content}
+      </p>
+      {lineCount(post.content) > PREVIEW_LINES && (
+        <div style={{ marginBottom: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setExpandedPostText((v) => !v)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#0070f3',
+              cursor: 'pointer',
+              padding: 0,
+              fontSize: '13px',
+            }}
+          >
+            {expandedPostText ? '收起此帖子' : '展开此帖子'}
+          </button>
+        </div>
+      )}
 
       {post.media.length > 0 && (
         <div style={{ marginBottom: '12px' }}>
-          {post.media.map((media) => (
-            <img
-              key={media.id}
-              src={`http://localhost:4000${media.url}`}
-              alt="Media"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '300px',
-                objectFit: 'cover',
-                borderRadius: '8px',
-                marginTop: '8px',
-                cursor: 'pointer',
-              }}
-              onClick={() =>
-                window.open(`http://localhost:4000${media.url}`, '_blank')
-              }
-            />
-          ))}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {post.media.slice(0, 3).map((media) => (
+              <img
+                key={media.id}
+                src={`http://localhost:4000${media.url}`}
+                alt="Media"
+                title="双击查看大图"
+                style={{
+                  width: 'calc((100% - 16px) / 3)',
+                  height: '110px',
+                  objectFit: 'cover',
+                  borderRadius: '8px',
+                  cursor: 'zoom-in',
+                }}
+                onDoubleClick={() =>
+                  setPreviewImageUrl(`http://localhost:4000${media.url}`)
+                }
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -416,7 +524,6 @@ export default function PostCard({
         >
           ⭐ {post.counts.favorites}
         </span>
-        <span>🔄 {post.counts.shares}</span>
       </div>
 
       {expandedComments && loadingComments && (
@@ -496,15 +603,26 @@ export default function PostCard({
                           {new Date(mainComment.createdAt).toLocaleString()}
                         </div>
                       </div>
-                      <p
+                      {(() => {
+                        const isExpanded = !!expandedTextMap[mainComment.id];
+                        const isLong = lineCount(mainComment.content) > PREVIEW_LINES;
+                        return (
+                          <p
                         style={{
                           fontSize: '14px',
                           marginTop: '4px',
                           marginBottom: '8px',
+                          whiteSpace: 'pre-wrap',
+                          overflow: isLong && !isExpanded ? 'hidden' : 'visible',
+                          display: isLong && !isExpanded ? '-webkit-box' : 'block',
+                          WebkitLineClamp: isLong && !isExpanded ? PREVIEW_LINES : 'unset',
+                          WebkitBoxOrient: isLong && !isExpanded ? 'vertical' : 'unset',
                         }}
                       >
                         {mainComment.content}
                       </p>
+                        );
+                      })()}
                       <div
                         style={{
                           display: 'flex',
@@ -527,6 +645,41 @@ export default function PostCard({
                         >
                           回复
                         </button>
+                        {lineCount(mainComment.content) > PREVIEW_LINES && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedTextMap((prev) => ({
+                                ...prev,
+                                [mainComment.id]: !prev[mainComment.id],
+                              }))
+                            }
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#0070f3',
+                              cursor: 'pointer',
+                              padding: '0',
+                            }}
+                          >
+                            {expandedTextMap[mainComment.id] ? '收起此评论' : '展开此评论'}
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(mainComment.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#c0392b',
+                              cursor: 'pointer',
+                              padding: '0',
+                            }}
+                          >
+                            删除
+                          </button>
+                        )}
                         {layerReplies.length > 0 && (
                           <button
                             type="button"
@@ -558,26 +711,34 @@ export default function PostCard({
                             gap: '8px',
                           }}
                         >
-                          <input
-                            type="text"
+                          <textarea
+                            rows={Math.min(
+                              MAX_COMMENT_LINES,
+                              Math.max(1, lineCount(replyInputs[mainComment.id] || ''))
+                            )}
                             value={replyInputs[mainComment.id] || ''}
                             onChange={(e) =>
                               setReplyInputs((prev) => ({
                                 ...prev,
-                                [mainComment.id]: e.target.value,
+                                [mainComment.id]: clampLines(e.target.value, MAX_COMMENT_LINES),
                               }))
                             }
                             placeholder={`回复 @${mainComment.author.username}...`}
                             style={{
                               flex: 1,
                               padding: '6px 10px',
-                              borderRadius: '12px',
+                              borderRadius: '8px',
                               border: '1px solid #eaeaea',
                               fontSize: '14px',
+                              minHeight: '36px',
+                              resize: 'vertical',
                             }}
-                            onKeyDown={(e) =>
-                              e.key === 'Enter' && handleReply(mainComment.id)
-                            }
+                            onKeyDown={(e) => {
+                              if (isSubmitShortcut(e)) {
+                                e.preventDefault();
+                                handleReply(mainComment.id);
+                              }
+                            }}
                           />
                           <button
                             type="button"
@@ -681,15 +842,28 @@ export default function PostCard({
                                     ).toLocaleString()}
                                   </div>
                                 </div>
-                                <p
+                                {(() => {
+                                  const isExpanded = !!expandedTextMap[replyComment.id];
+                                  const isLong = lineCount(text) > PREVIEW_LINES;
+                                  return (
+                                    <p
                                   style={{
                                     fontSize: '14px',
                                     marginTop: '4px',
                                     marginBottom: '8px',
+                                    whiteSpace: 'pre-wrap',
+                                    overflow: isLong && !isExpanded ? 'hidden' : 'visible',
+                                    display: isLong && !isExpanded ? '-webkit-box' : 'block',
+                                    WebkitLineClamp:
+                                      isLong && !isExpanded ? PREVIEW_LINES : 'unset',
+                                    WebkitBoxOrient:
+                                      isLong && !isExpanded ? 'vertical' : 'unset',
                                   }}
                                 >
                                   {text}
                                 </p>
+                                  );
+                                })()}
                                 <div
                                   style={{
                                     display: 'flex',
@@ -714,6 +888,45 @@ export default function PostCard({
                                   >
                                     回复
                                   </button>
+                                  {lineCount(text) > PREVIEW_LINES && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedTextMap((prev) => ({
+                                          ...prev,
+                                          [replyComment.id]: !prev[replyComment.id],
+                                        }))
+                                      }
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#0070f3',
+                                        cursor: 'pointer',
+                                        padding: '0',
+                                      }}
+                                    >
+                                      {expandedTextMap[replyComment.id]
+                                        ? '收起此评论'
+                                        : '展开此评论'}
+                                    </button>
+                                  )}
+                                  {isAdmin && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleDeleteComment(replyComment.id)
+                                      }
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#c0392b',
+                                        cursor: 'pointer',
+                                        padding: '0',
+                                      }}
+                                    >
+                                      删除
+                                    </button>
+                                  )}
                                 </div>
                                 {replyingTo?.commentId === replyComment.id && (
                                   <div
@@ -723,29 +936,42 @@ export default function PostCard({
                                       gap: '8px',
                                     }}
                                   >
-                                    <input
-                                      type="text"
+                                    <textarea
+                                      rows={Math.min(
+                                        MAX_COMMENT_LINES,
+                                        Math.max(
+                                          1,
+                                          lineCount(replyInputs[replyComment.id] || '')
+                                        )
+                                      )}
                                       value={
                                         replyInputs[replyComment.id] || ''
                                       }
                                       onChange={(e) =>
                                         setReplyInputs((prev) => ({
                                           ...prev,
-                                          [replyComment.id]: e.target.value,
+                                          [replyComment.id]: clampLines(
+                                            e.target.value,
+                                            MAX_COMMENT_LINES
+                                          ),
                                         }))
                                       }
                                       placeholder={`回复 @${replyComment.author.username}...`}
                                       style={{
                                         flex: 1,
                                         padding: '6px 10px',
-                                        borderRadius: '12px',
+                                        borderRadius: '8px',
                                         border: '1px solid #eaeaea',
                                         fontSize: '14px',
+                                        minHeight: '36px',
+                                        resize: 'vertical',
                                       }}
-                                      onKeyDown={(e) =>
-                                        e.key === 'Enter' &&
-                                        handleReply(replyComment.id)
-                                      }
+                                      onKeyDown={(e) => {
+                                        if (isSubmitShortcut(e)) {
+                                          e.preventDefault();
+                                          handleReply(replyComment.id);
+                                        }
+                                      }}
                                     />
                                     <button
                                       type="button"
@@ -867,19 +1093,26 @@ export default function PostCard({
         )}
 
       <div style={{ display: 'flex', gap: '8px' }}>
-        <input
-          type="text"
+        <textarea
+          rows={Math.min(MAX_COMMENT_LINES, Math.max(1, lineCount(commentInput)))}
           value={commentInput}
-          onChange={(e) => setCommentInput(e.target.value)}
+          onChange={(e) => setCommentInput(clampLines(e.target.value, MAX_COMMENT_LINES))}
           placeholder="写下你的评论..."
           style={{
             flex: 1,
             padding: '8px 12px',
-            borderRadius: '16px',
+            borderRadius: '10px',
             border: '1px solid #eaeaea',
             fontSize: '14px',
+            minHeight: '36px',
+            resize: 'vertical',
           }}
-          onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit()}
+          onKeyDown={(e) => {
+            if (isSubmitShortcut(e)) {
+              e.preventDefault();
+              handleCommentSubmit();
+            }
+          }}
         />
         <button
           type="button"
@@ -964,6 +1197,34 @@ export default function PostCard({
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {previewImageUrl && (
+        <div
+          role="presentation"
+          onClick={() => setPreviewImageUrl(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            zIndex: 260,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <img
+            src={previewImageUrl}
+            alt="预览图"
+            style={{
+              maxWidth: '92vw',
+              maxHeight: '92vh',
+              objectFit: 'contain',
+              borderRadius: '10px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            }}
+          />
         </div>
       )}
     </div>

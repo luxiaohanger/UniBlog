@@ -1,13 +1,21 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/http';
 import { getTokens } from '../../lib/token';
 
+const MAX_POST_LINES = 20;
+const MAX_IMAGES = 3;
+
+function clampLines(text: string, maxLines: number) {
+  return text.split('\n').slice(0, maxLines).join('\n');
+}
+
 export default function WritePage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [content, setContent] = useState('');
-  const [images, setImages] = useState([]);
+  const [images, setImages] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -20,12 +28,19 @@ export default function WritePage() {
     }
   }, [router]);
 
-  const handleImageChange = (e) => {
-    const files = Array.from(e.target.files);
-    setImages([...images, ...files]);
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const merged = [...images, ...files].slice(0, MAX_IMAGES);
+    setImages(merged);
+    if (files.length + images.length > MAX_IMAGES) {
+      setError(`一次最多上传 ${MAX_IMAGES} 张图片`);
+    } else {
+      setError('');
+    }
+    e.target.value = '';
   };
 
-  const removeImage = (index) => {
+  const removeImage = (index: number) => {
     const newImages = [...images];
     newImages.splice(index, 1);
     setImages(newImages);
@@ -67,7 +82,7 @@ export default function WritePage() {
         <div style={{ marginBottom: '24px' }}>
           <textarea
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => setContent(clampLines(e.target.value, MAX_POST_LINES))}
             placeholder="分享你的想法..."
             style={{
               width: '100%',
@@ -79,26 +94,50 @@ export default function WritePage() {
               resize: 'vertical'
             }}
           />
+          <div style={{ marginTop: '6px', fontSize: '12px', color: '#999' }}>
+            最多 {MAX_POST_LINES} 行
+          </div>
         </div>
         <div style={{ marginBottom: '24px' }}>
           <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>添加图片</label>
           <input
+            ref={fileInputRef}
             type="file"
             multiple
             accept="image/*"
             onChange={handleImageChange}
-            style={{ marginBottom: '12px' }}
+            disabled={images.length >= MAX_IMAGES}
+            style={{ display: 'none' }}
           />
+          <button
+            type="button"
+            disabled={images.length >= MAX_IMAGES}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              marginBottom: '12px',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+              background: images.length >= MAX_IMAGES ? '#f5f5f5' : '#fff',
+              color: images.length >= MAX_IMAGES ? '#999' : '#333',
+              cursor: images.length >= MAX_IMAGES ? 'not-allowed' : 'pointer',
+            }}
+          >
+            选择图片
+          </button>
+          <div style={{ marginTop: '-6px', marginBottom: '10px', fontSize: '12px', color: '#999' }}>
+            一次最多 {MAX_IMAGES} 张
+          </div>
           {images.length > 0 && (
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '12px' }}>
               {images.map((image, index) => (
-                <div key={index} style={{ position: 'relative' }}>
+                <div key={index} style={{ position: 'relative', width: '33.33%' }}>
                   <img
                     src={URL.createObjectURL(image)}
                     alt={`预览 ${index + 1}`}
                     style={{ 
-                      width: '100px', 
-                      height: '100px', 
+                      width: '100%',
+                      height: '110px',
                       objectFit: 'cover', 
                       borderRadius: '8px'
                     }}

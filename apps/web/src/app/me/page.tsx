@@ -29,7 +29,6 @@ export default function MePage() {
           initialStates[post.id] = {
             liked: false,
             favorited: false,
-            shared: false,
           };
         });
         setPostStates(initialStates);
@@ -108,7 +107,6 @@ export default function MePage() {
                 postStates[post.id] || {
                   liked: false,
                   favorited: false,
-                  shared: false,
                 }
               }
               onUpdatePost={handleUpdatePost}

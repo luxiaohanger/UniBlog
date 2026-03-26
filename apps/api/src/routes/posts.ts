@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
+import { isUserAdmin } from '../lib/roles';
 
 export const postsRouter = Router();
 
@@ -41,7 +42,7 @@ function unlinkStoredMediaFile(storedPath: string) {
   });
 }
 
-postsRouter.post('/', requireAuth(), upload.array('media', 6), async (req, res) => {
+postsRouter.post('/', requireAuth(), upload.array('media', 3), async (req, res) => {
   try {
     const user = (req as unknown as { user?: { userId: string } }).user;
     if (!user) return res.status(401).json({ error: 'unauthorized' });
@@ -253,7 +254,8 @@ postsRouter.delete('/:postId', requireAuth(), async (req, res) => {
       include: { media: true },
     });
     if (!post) return res.status(404).json({ error: 'post_not_found' });
-    if (post.authorId !== user.userId) {
+    const admin = await isUserAdmin(user.userId);
+    if (post.authorId !== user.userId && !admin) {
       return res.status(403).json({ error: 'forbidden_not_author' });
     }
 
@@ -304,6 +306,7 @@ postsRouter.get('/:postId', async (req, res) => {
           content: c.content,
           createdAt: c.createdAt,
           author: c.author,
+          layerMainId: c.layerMainId,
         })),
         counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
       },

@@ -42,7 +42,7 @@ export default function UserPublicPage() {
 
         const initial: Record<string, any> = {};
         data.posts.forEach((p: any) => {
-          initial[p.id] = { liked: false, favorited: false, shared: false };
+          initial[p.id] = { liked: false, favorited: false };
         });
         setPostStates(initial);
 
@@ -104,7 +104,6 @@ export default function UserPublicPage() {
                 postStates[post.id] || {
                   liked: false,
                   favorited: false,
-                  shared: false,
                 }
               }
               onUpdatePost={(updated) =>
