@@ -57,6 +57,9 @@ export default function Header() {
               <Link href="/me" prefetch={false} style={{ color: '#333', textDecoration: 'none' }}>
                 {username ? `「${username}」的主页` : '「我」的主页'}
               </Link>
+              <Link href="/write" prefetch={false} style={{ color: '#333', textDecoration: 'none' }}>
+                发帖
+              </Link>
               <button type="button" onClick={handleLogout} style={{ 
                 background: 'none', 
                 border: '1px solid #ddd', 

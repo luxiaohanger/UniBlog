@@ -116,6 +116,9 @@ export default function UserPublicPage() {
                   [pid]: { ...prev[pid], ...partial },
                 }))
               }
+              onDeletePost={(postId) =>
+                setPosts((prev) => prev.filter((p) => p.id !== postId))
+              }
             />
           ))}
         </div>

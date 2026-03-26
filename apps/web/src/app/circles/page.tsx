@@ -87,6 +87,9 @@ export default function CirclesPage() {
                 [postId]: { ...prev[postId], ...partial },
               }))
             }
+            onDeletePost={(postId) =>
+              setPosts((prev) => prev.filter((p) => p.id !== postId))
+            }
           />
         ))}
       </div>

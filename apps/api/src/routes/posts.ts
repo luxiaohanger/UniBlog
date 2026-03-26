@@ -28,6 +28,19 @@ function mediaKindByMime(mime: string) {
   return 'image';
 }
 
+/** 按 PostMedia.path 删除 uploads 内文件；含 .. 或越界路径则跳过 */
+function unlinkStoredMediaFile(storedPath: string) {
+  const rel = storedPath.replace(/^uploads\/?/, '');
+  if (!rel || rel.includes('..') || path.isAbsolute(rel)) return;
+  const abs = path.resolve(uploadsDir, rel);
+  const relFromRoot = path.relative(uploadsDir, abs);
+  if (relFromRoot.startsWith('..') || path.isAbsolute(relFromRoot)) return;
+  fs.unlink(abs, (err) => {
+    const code = err && (err as NodeJS.ErrnoException).code;
+    if (err && code !== 'ENOENT') console.error('unlink media failed', err);
+  });
+}
+
 postsRouter.post('/', requireAuth(), upload.array('media', 6), async (req, res) => {
   try {
     const user = (req as unknown as { user?: { userId: string } }).user;
@@ -226,6 +239,33 @@ postsRouter.get('/author/:authorId', async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: 'author_posts_failed' });
+  }
+});
+
+postsRouter.delete('/:postId', requireAuth(), async (req, res) => {
+  try {
+    const user = (req as unknown as { user?: { userId: string } }).user;
+    if (!user) return res.status(401).json({ error: 'unauthorized' });
+
+    const { postId } = req.params;
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      include: { media: true },
+    });
+    if (!post) return res.status(404).json({ error: 'post_not_found' });
+    if (post.authorId !== user.userId) {
+      return res.status(403).json({ error: 'forbidden_not_author' });
+    }
+
+    const mediaPaths = post.media.map((m) => m.path);
+    // 级联删除：Comment、PostMedia、PostLike、PostFavorite、PostShare 等由外键 ON DELETE CASCADE 处理
+    await prisma.post.delete({ where: { id: postId } });
+    for (const p of mediaPaths) unlinkStoredMediaFile(p);
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'delete_post_failed' });
   }
 });
 

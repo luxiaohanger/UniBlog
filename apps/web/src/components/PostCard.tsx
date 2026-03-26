@@ -1,10 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useLayoutEffect } from 'react';
+import useSWR from 'swr';
 import { apiFetch } from '../lib/http';
+import { getTokens } from '../lib/token';
 import { buildCommentTree } from '../lib/commentTree';
 import { parseReplyDisplay } from '../lib/replyDisplay';
 import { UserProfileLink, AtUserLink } from './UserProfileLink';
+
+type CommentBlock = {
+  mainComments: any[];
+  replyComments: any[];
+  layers: Record<string, number>;
+};
+
+/** 回复目标为主评论或其层内回复时，找到对应层主评论 id */
+function findMainIdForComment(cb: CommentBlock, targetCommentId: string): string | null {
+  if (cb.mainComments.some((m: any) => m.id === targetCommentId)) return targetCommentId;
+  const layer = cb.layers[targetCommentId];
+  if (layer == null) return null;
+  const main = cb.mainComments.find((m: any) => cb.layers[m.id] === layer);
+  return main?.id ?? null;
+}
 
 interface Author {
   id: string;
@@ -43,20 +60,24 @@ interface PostCardProps {
   postState: PostState;
   onUpdatePost: (updatedPost: Post) => void;
   onUpdatePostState: (postId: string, newState: Partial<PostState>) => void;
+  /** 删除成功后从列表移除（圈子/个人/收藏等） */
+  onDeletePost?: (postId: string) => void;
 }
-
-type CommentBlock = {
-  mainComments: any[];
-  replyComments: any[];
-  layers: Record<string, number>;
-};
 
 export default function PostCard({
   post,
   postState,
   onUpdatePost,
   onUpdatePostState,
+  onDeletePost,
 }: PostCardProps) {
+  const accessToken = getTokens()?.accessToken ?? null;
+  const { data: meData } = useSWR<{ user: { id: string } }>(
+    accessToken ? '/auth/me' : null,
+    () => apiFetch<{ user: { id: string } }>('/auth/me')
+  );
+  const isOwnPost = meData?.user?.id === post.author.id;
+
   const [expandedComments, setExpandedComments] = useState(false);
   const [commentBlock, setCommentBlock] = useState<CommentBlock | null>(null);
   const [expandedLayers, setExpandedLayers] = useState<Record<string, boolean>>({});
@@ -66,6 +87,24 @@ export default function PostCard({
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
   const [replyingTo, setReplyingTo] = useState<{ commentId: string } | null>(null);
   const [loadingComments, setLoadingComments] = useState(false);
+  const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null);
+  const [likeAnim, setLikeAnim] = useState(false);
+  const [favAnim, setFavAnim] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!highlightCommentId) return;
+    const id = highlightCommentId;
+    requestAnimationFrame(() => {
+      document.getElementById(`postcard-cmt-${id}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    });
+    const t = window.setTimeout(() => setHighlightCommentId(null), 1400);
+    return () => clearTimeout(t);
+  }, [highlightCommentId, commentBlock]);
 
   /** 每次展开从接口拉取，与圈子数据一致 */
   const fetchPostDetails = async () => {
@@ -92,10 +131,44 @@ export default function PostCard({
     }
   };
 
-  const handleToggleComments = () => {
-    if (expandedComments) {
-      setExpandedComments(false);
-    } else {
+  /** 与圈子一致：用接口评论列表 + buildCommentTree 重建层数与主/回复划分 */
+  const reloadCommentTreeFromServer = async (): Promise<CommentBlock | null> => {
+    try {
+      const data = await apiFetch<any>(`/posts/${post.id}`);
+      const tree = buildCommentTree(data.post.comments || []);
+      setCommentBlock(tree);
+
+      setExpandedLayers((prevEl) => {
+        const next: Record<string, boolean> = {};
+        tree.mainComments.forEach((c: any) => {
+          next[c.id] = prevEl[c.id] ?? false;
+        });
+        return next;
+      });
+      setVisibleLayerComments((prevV) => {
+        const next: Record<string, number> = {};
+        tree.mainComments.forEach((c: any) => {
+          next[c.id] = prevV[c.id] ?? 0;
+        });
+        return next;
+      });
+      setVisibleMainComments((prev) =>
+        Math.max(prev, tree.mainComments.length)
+      );
+
+      if (data.post?.counts) {
+        onUpdatePost({ ...post, counts: data.post.counts });
+      }
+      return tree;
+    } catch (err) {
+      console.error('同步评论失败:', err);
+      return null;
+    }
+  };
+
+  /** 评论图标仅负责展开；收起用底部「收起所有评论」 */
+  const handleOpenComments = () => {
+    if (!expandedComments) {
       fetchPostDetails();
     }
   };
@@ -110,47 +183,10 @@ export default function PostCard({
         body: { content },
       });
 
-      setCommentBlock((prev) => {
-        if (prev) {
-          const newMainComments = [data.comment, ...(prev.mainComments || [])];
-          newMainComments.sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          );
-          const newLayers = { ...prev.layers };
-          newMainComments.forEach((comment: any, index: number) => {
-            newLayers[comment.id] = index + 1;
-          });
-          return {
-            ...prev,
-            mainComments: newMainComments,
-            layers: newLayers,
-          };
-        }
-        return {
-          mainComments: [data.comment],
-          replyComments: [],
-          layers: { [data.comment.id]: 1 },
-        };
-      });
-
-      setExpandedLayers((prev) => ({
-        ...prev,
-        [data.comment.id]: false,
-      }));
-      setVisibleLayerComments((prev) => ({
-        ...prev,
-        [data.comment.id]: 0,
-      }));
-
-      onUpdatePost({
-        ...post,
-        counts: {
-          ...post.counts,
-          comments: (post.counts?.comments || 0) + 1,
-        },
-      });
+      setExpandedComments(true);
+      await reloadCommentTreeFromServer();
       setCommentInput('');
+      setHighlightCommentId(data.comment.id);
     } catch (err) {
       console.error('发布评论失败:', err);
       alert('发布评论失败，请重试');
@@ -161,9 +197,10 @@ export default function PostCard({
     const content = replyInputs[commentId];
     if (!content?.trim()) return;
 
+    const prev = commentBlock;
     const targetComment =
-      commentBlock?.mainComments?.find((c: any) => c.id === commentId) ||
-      commentBlock?.replyComments?.find((c: any) => c.id === commentId);
+      prev?.mainComments?.find((c: any) => c.id === commentId) ||
+      prev?.replyComments?.find((c: any) => c.id === commentId);
     if (!targetComment) return;
 
     try {
@@ -172,38 +209,27 @@ export default function PostCard({
         body: { content: `@${targetComment.author.username} ${content}` },
       });
 
-      setCommentBlock((prev) => {
-        if (!prev) {
-          return {
-            mainComments: [],
-            replyComments: [data.comment],
-            layers: { [data.comment.id]: 1 },
-          };
+      setExpandedComments(true);
+      const tree = await reloadCommentTreeFromServer();
+
+      if (tree) {
+        const mainId = findMainIdForComment(tree, commentId);
+        if (mainId) {
+          setExpandedLayers((p) => ({ ...p, [mainId]: true }));
+          const layerNum = tree.layers[data.comment.id];
+          const sameLayer = tree.replyComments.filter(
+            (r: any) => tree.layers[r.id] === layerNum
+          ).length;
+          setVisibleLayerComments((p) => ({
+            ...p,
+            [mainId]: Math.max(p[mainId] || 5, sameLayer),
+          }));
         }
-        const newLayers = { ...prev.layers };
-        newLayers[data.comment.id] = prev.layers?.[commentId] || 1;
-        const newReplyComments = [data.comment, ...(prev.replyComments || [])];
-        newReplyComments.sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
-        return {
-          ...prev,
-          replyComments: newReplyComments,
-          layers: newLayers,
-        };
-      });
+      }
 
-      setReplyInputs((prev) => ({ ...prev, [commentId]: '' }));
+      setReplyInputs((p) => ({ ...p, [commentId]: '' }));
       setReplyingTo(null);
-
-      onUpdatePost({
-        ...post,
-        counts: {
-          ...post.counts,
-          comments: (post.counts?.comments || 0) + 1,
-        },
-      });
+      setHighlightCommentId(data.comment.id);
     } catch (err) {
       console.error('回复评论失败:', err);
     }
@@ -229,6 +255,7 @@ export default function PostCard({
           counts: { ...post.counts, likes: post.counts.likes + 1 },
         });
       }
+      setLikeAnim(true);
     } catch (err) {
       console.error('点赞操作失败:', err);
     }
@@ -258,8 +285,23 @@ export default function PostCard({
           counts: { ...post.counts, favorites: post.counts.favorites + 1 },
         });
       }
+      setFavAnim(true);
     } catch (err) {
       console.error('收藏操作失败:', err);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await apiFetch(`/posts/${post.id}`, { method: 'DELETE' });
+      setShowDeleteConfirm(false);
+      onDeletePost?.(post.id);
+    } catch (err) {
+      console.error('删除帖子失败:', err);
+      alert('删除失败，请重试');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -291,6 +333,22 @@ export default function PostCard({
             {new Date(post.createdAt).toLocaleString()}
           </div>
         </div>
+        {isOwnPost && (
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            style={{
+              fontSize: '13px',
+              color: '#999',
+              background: 'none',
+              border: '1px solid #e0e0e0',
+              borderRadius: '6px',
+              padding: '4px 10px',
+            }}
+          >
+            删除
+          </button>
+        )}
       </div>
 
       <p style={{ marginBottom: '12px' }}>{post.content}</p>
@@ -327,25 +385,34 @@ export default function PostCard({
           marginBottom: '16px',
         }}
       >
-        <span style={{ cursor: 'pointer' }} onClick={handleToggleComments}>
-          💬 {post.counts.comments}{' '}
-          {expandedComments ? '(收起)' : ''}
+        <span style={{ cursor: 'pointer' }} onClick={handleOpenComments}>
+          💬 {post.counts.comments}
         </span>
         <span
+          role="button"
+          tabIndex={0}
+          className={likeAnim ? 'post-action-hit' : undefined}
+          onAnimationEnd={() => setLikeAnim(false)}
           style={{
             cursor: 'pointer',
             color: postState.liked ? '#ff4757' : '#666',
           }}
           onClick={handleLike}
+          onKeyDown={(e) => e.key === 'Enter' && handleLike()}
         >
           👍 {post.counts.likes}
         </span>
         <span
+          role="button"
+          tabIndex={0}
+          className={favAnim ? 'post-action-hit' : undefined}
+          onAnimationEnd={() => setFavAnim(false)}
           style={{
             cursor: 'pointer',
             color: postState.favorited ? '#ffa502' : '#666',
           }}
           onClick={handleFavorite}
+          onKeyDown={(e) => e.key === 'Enter' && handleFavorite()}
         >
           ⭐ {post.counts.favorites}
         </span>
@@ -384,7 +451,16 @@ export default function PostCard({
                 );
 
                 return (
-                  <div key={mainComment.id} style={{ marginBottom: '16px' }}>
+                  <div
+                    key={mainComment.id}
+                    id={`postcard-cmt-${mainComment.id}`}
+                    className={
+                      highlightCommentId === mainComment.id
+                        ? 'postcard-cmt--highlight'
+                        : undefined
+                    }
+                    style={{ marginBottom: '16px' }}
+                  >
                     <div
                       style={{
                         marginBottom: '8px',
@@ -547,6 +623,12 @@ export default function PostCard({
                             return (
                               <div
                                 key={replyComment.id}
+                                id={`postcard-cmt-${replyComment.id}`}
+                                className={
+                                  highlightCommentId === replyComment.id
+                                    ? 'postcard-cmt--highlight'
+                                    : undefined
+                                }
                                 style={{
                                   marginBottom: '8px',
                                   padding: '8px',
@@ -815,6 +897,75 @@ export default function PostCard({
           发送
         </button>
       </div>
+
+      {showDeleteConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          role="presentation"
+          onClick={() => !deleting && setShowDeleteConfirm(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: 360,
+              width: '100%',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ fontSize: '16px', marginBottom: '8px', fontWeight: 600 }}>
+              删除帖子？
+            </p>
+            <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
+              删除后无法恢复，确定要删除这条帖子吗？
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setShowDeleteConfirm(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #ddd',
+                  background: 'white',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#e74c3c',
+                  color: 'white',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {deleting ? '删除中…' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

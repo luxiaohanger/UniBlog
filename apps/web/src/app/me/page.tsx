@@ -113,6 +113,9 @@ export default function MePage() {
               }
               onUpdatePost={handleUpdatePost}
               onUpdatePostState={handleUpdatePostState}
+              onDeletePost={(postId) =>
+                setPosts((prev) => prev.filter((p: any) => p.id !== postId))
+              }
             />
           ))}
         </div>
