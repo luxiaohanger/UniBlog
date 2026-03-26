@@ -1,9 +1,15 @@
 'use client';
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { apiFetch } from '../lib/http';
-import { getTokens, clearTokens } from '../lib/token';
+import {
+  getTokens,
+  clearTokens,
+  getStoredDisplayUsername,
+  setStoredDisplayUsername,
+} from '../lib/token';
 
 export default function Header() {
   const router = useRouter();
@@ -13,7 +19,15 @@ export default function Header() {
     accessToken ? '/auth/me' : null,
     () => apiFetch<{ user: { id: string; email: string; username: string } }>('/auth/me')
   );
-  const username = data?.user?.username;
+
+  useEffect(() => {
+    const u = data?.user?.username;
+    if (u) setStoredDisplayUsername(u);
+  }, [data?.user?.username]);
+
+  const username = data?.user?.username ?? getStoredDisplayUsername() ?? undefined;
+  // 以 token 为准：已登录在 /auth/me 返回前不再误显示「登录/注册」
+  const isAuthed = !!accessToken;
 
   const handleLogout = () => {
     clearTokens();
@@ -30,15 +44,20 @@ export default function Header() {
       zIndex: 100
     }}>
       <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link href="/circles" style={{ fontSize: '18px', fontWeight: 'bold', color: '#333', textDecoration: 'none' }}>
+        {/* 平台名称仅展示，不可点击跳转 */}
+        <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#333' }}>
           高校博客平台
-        </Link>
+        </span>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          {username ? (
+          {isAuthed ? (
             <>
-              <Link href="/circles" style={{ color: '#333', textDecoration: 'none' }}>圈子</Link>
-              <Link href="/me" style={{ color: '#333', textDecoration: 'none' }}>{username}的主页</Link>
-              <button onClick={handleLogout} style={{ 
+              <Link href="/circles" prefetch={false} style={{ color: '#333', textDecoration: 'none' }}>
+                圈子
+              </Link>
+              <Link href="/me" prefetch={false} style={{ color: '#333', textDecoration: 'none' }}>
+                {username ? `「${username}」的主页` : '「我」的主页'}
+              </Link>
+              <button type="button" onClick={handleLogout} style={{ 
                 background: 'none', 
                 border: '1px solid #ddd', 
                 padding: '4px 12px', 

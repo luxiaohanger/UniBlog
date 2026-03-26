@@ -1,5 +1,6 @@
 const ACCESS_KEY = 'accessToken';
 const REFRESH_KEY = 'refreshToken';
+const USERNAME_KEY = 'me_display_username';
 
 export function getTokens() {
   if (typeof window === 'undefined') return null;
@@ -22,6 +23,18 @@ export function clearTokens() {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(ACCESS_KEY);
   window.localStorage.removeItem(REFRESH_KEY);
+  window.localStorage.removeItem(USERNAME_KEY);
+}
+
+/** 登录后写入，供顶栏在 /auth/me 返回前显示「用户名」 */
+export function setStoredDisplayUsername(username: string) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(USERNAME_KEY, username);
+}
+
+export function getStoredDisplayUsername(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(USERNAME_KEY);
 }
 
 export function getAccessToken() {

@@ -1,5 +1,5 @@
 import { API_BASE_URL } from './config';
-import { getAuthHeaders } from './token';
+import { clearTokens, getAuthHeaders } from './token';
 
 async function parseJsonSafe(res: Response) {
   const text = await res.text();
@@ -19,11 +19,15 @@ export async function apiFetch<T>(
 ) {
   const url = `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
   const method = options?.method || 'GET';
-  
-  // 登录和注册请求不需要认证头
+
+  // 仅登录、注册不带 Bearer；/auth/me 等需携带 token
+  const pathWithoutQuery = path.split('?')[0];
+  const authPathNoBearer =
+    pathWithoutQuery === '/auth/login' || pathWithoutQuery === '/auth/register';
+
   const headers: Record<string, string> = {
     ...(options?.headers || {}),
-    ...(!path.startsWith('/auth/') ? getAuthHeaders() : {}),
+    ...(authPathNoBearer ? {} : getAuthHeaders()),
   };
   
   let body: BodyInit | undefined;
@@ -49,6 +53,10 @@ export async function apiFetch<T>(
     const data = await parseJsonSafe(res);
     
     if (!res.ok) {
+      // 带 token 的请求若 401，清会话，避免子页面 replace('/login') 后又被 AppShell 送回圈子
+      if (res.status === 401 && !authPathNoBearer) {
+        clearTokens();
+      }
       const err = data?.error || `http_${res.status}`;
       throw new Error(err);
     }

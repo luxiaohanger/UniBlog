@@ -138,6 +138,97 @@ postsRouter.get('/mine', requireAuth(), async (req, res) => {
   }
 });
 
+/** 必须在 /:postId 之前注册，否则会被当成 postId=favorites */
+postsRouter.get('/favorites', requireAuth(), async (req, res) => {
+  try {
+    const user = (req as unknown as { user?: { userId: string } }).user;
+    if (!user) return res.status(401).json({ error: 'unauthorized' });
+
+    const favorites = await prisma.postFavorite.findMany({
+      where: { userId: user.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        post: {
+          include: { author: { select: { id: true, username: true } }, media: true },
+        },
+      },
+    });
+
+    // 排除异常数据（帖子已删等）
+    const posts = favorites.map((f) => f.post).filter(Boolean);
+
+    const result = await Promise.all(
+      posts.map(async (p) => {
+        const [commentCount, likeCount, favoriteCount, shareCount] = await Promise.all([
+          prisma.comment.count({ where: { postId: p.id } }),
+          prisma.postLike.count({ where: { postId: p.id } }),
+          prisma.postFavorite.count({ where: { postId: p.id } }),
+          prisma.postShare.count({ where: { postId: p.id } }),
+        ]);
+
+        return {
+          id: p.id,
+          content: p.content,
+          createdAt: p.createdAt,
+          author: p.author,
+          media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
+          counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
+        };
+      })
+    );
+
+    return res.json({ posts: result });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'favorites_failed' });
+  }
+});
+
+/** 某用户公开的帖子列表（须在 /:postId 之前注册） */
+postsRouter.get('/author/:authorId', async (req, res) => {
+  try {
+    const { authorId } = req.params;
+    const author = await prisma.user.findUnique({
+      where: { id: authorId },
+      select: { id: true, username: true },
+    });
+    if (!author) return res.status(404).json({ error: 'user_not_found' });
+
+    const posts = await prisma.post.findMany({
+      where: { authorId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: { author: { select: { id: true, username: true } }, media: true },
+    });
+
+    const result = await Promise.all(
+      posts.map(async (p) => {
+        const [commentCount, likeCount, favoriteCount, shareCount] = await Promise.all([
+          prisma.comment.count({ where: { postId: p.id } }),
+          prisma.postLike.count({ where: { postId: p.id } }),
+          prisma.postFavorite.count({ where: { postId: p.id } }),
+          prisma.postShare.count({ where: { postId: p.id } }),
+        ]);
+
+        return {
+          id: p.id,
+          content: p.content,
+          createdAt: p.createdAt,
+          author: p.author,
+          media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
+          counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
+        };
+      })
+    );
+
+    return res.json({ user: author, posts: result });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'author_posts_failed' });
+  }
+});
+
 postsRouter.get('/:postId', async (req, res) => {
   try {
     const { postId } = req.params;

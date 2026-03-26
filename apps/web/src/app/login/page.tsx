@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../lib/http';
-import { setTokens } from '../../lib/token';
+import { setTokens, setStoredDisplayUsername } from '../../lib/token';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,11 +17,16 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const data = await apiFetch<{ accessToken: string; refreshToken: string }>('/auth/login', {
+      const data = await apiFetch<{
+        accessToken: string;
+        refreshToken: string;
+        user?: { username: string };
+      }>('/auth/login', {
         method: 'POST',
         body: { account: identifier, password }
       });
       setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+      if (data.user?.username) setStoredDisplayUsername(data.user.username);
       router.replace('/circles');
     } catch (err) {
       if (err instanceof Error) {
