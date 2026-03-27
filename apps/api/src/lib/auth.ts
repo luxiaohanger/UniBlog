@@ -8,7 +8,7 @@ export type AccessTokenPayload = {
 
 export function signAccessToken(payload: AccessTokenPayload) {
   const jwtSecret = (process.env.JWT_ACCESS_SECRET || 'dev_access_secret') as string;
-  const expiresInEnv = process.env.JWT_ACCESS_EXPIRES_IN || '900s';
+  const expiresInEnv = process.env.JWT_ACCESS_EXPIRES_IN || '24h';
   const expiresIn: SignOptions['expiresIn'] = expiresInEnv as SignOptions['expiresIn'];
   return jwt.sign(payload, jwtSecret, { expiresIn });
 }

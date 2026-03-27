@@ -29,6 +29,41 @@ function mediaKindByMime(mime: string) {
   return 'image';
 }
 
+type PinScope = 'feed' | 'profile';
+
+function isPinnedByScope(
+  p: { pinnedInFeedAt: Date | null; pinnedInProfileAt: Date | null },
+  scope?: PinScope
+) {
+  if (scope === 'feed') return !!p.pinnedInFeedAt;
+  if (scope === 'profile') return !!p.pinnedInProfileAt;
+  return false;
+}
+
+function serializePost(
+  p: {
+    id: string;
+    content: string;
+    createdAt: Date;
+    author: { id: string; username: string };
+    media: Array<{ id: string; kind: string; path: string }>;
+    pinnedInFeedAt: Date | null;
+    pinnedInProfileAt: Date | null;
+  },
+  counts: { comments: number; likes: number; favorites: number; shares: number },
+  scope?: PinScope
+) {
+  return {
+    id: p.id,
+    content: p.content,
+    createdAt: p.createdAt,
+    author: p.author,
+    media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
+    isPinned: isPinnedByScope(p, scope),
+    counts,
+  };
+}
+
 /** 按 PostMedia.path 删除 uploads 内文件；含 .. 或越界路径则跳过 */
 function unlinkStoredMediaFile(storedPath: string) {
   const rel = storedPath.replace(/^uploads\/?/, '');
@@ -81,7 +116,7 @@ postsRouter.post('/', requireAuth(), upload.array('media', 3), async (req, res) 
 postsRouter.get('/feed', async (_req, res) => {
   try {
     const posts = await prisma.post.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ pinnedInFeedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: 30,
       include: { author: { select: { id: true, username: true } }, media: true },
     });
@@ -95,14 +130,11 @@ postsRouter.get('/feed', async (_req, res) => {
           prisma.postShare.count({ where: { postId: p.id } }),
         ]);
 
-        return {
-          id: p.id,
-          content: p.content,
-          createdAt: p.createdAt,
-          author: p.author,
-          media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
-          counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
-        };
+        return serializePost(
+          p,
+          { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
+          'feed'
+        );
       })
     );
 
@@ -120,7 +152,7 @@ postsRouter.get('/mine', requireAuth(), async (req, res) => {
 
     const posts = await prisma.post.findMany({
       where: { authorId: user.userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ pinnedInProfileAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: 50,
       include: { author: { select: { id: true, username: true } }, media: true },
     });
@@ -134,14 +166,11 @@ postsRouter.get('/mine', requireAuth(), async (req, res) => {
           prisma.postShare.count({ where: { postId: p.id } }),
         ]);
 
-        return {
-          id: p.id,
-          content: p.content,
-          createdAt: p.createdAt,
-          author: p.author,
-          media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
-          counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
-        };
+        return serializePost(
+          p,
+          { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
+          'profile'
+        );
       })
     );
 
@@ -181,14 +210,12 @@ postsRouter.get('/favorites', requireAuth(), async (req, res) => {
           prisma.postShare.count({ where: { postId: p.id } }),
         ]);
 
-        return {
-          id: p.id,
-          content: p.content,
-          createdAt: p.createdAt,
-          author: p.author,
-          media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
-          counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
-        };
+        return serializePost(p, {
+          comments: commentCount,
+          likes: likeCount,
+          favorites: favoriteCount,
+          shares: shareCount,
+        });
       })
     );
 
@@ -211,7 +238,7 @@ postsRouter.get('/author/:authorId', async (req, res) => {
 
     const posts = await prisma.post.findMany({
       where: { authorId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ pinnedInProfileAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: 50,
       include: { author: { select: { id: true, username: true } }, media: true },
     });
@@ -225,14 +252,11 @@ postsRouter.get('/author/:authorId', async (req, res) => {
           prisma.postShare.count({ where: { postId: p.id } }),
         ]);
 
-        return {
-          id: p.id,
-          content: p.content,
-          createdAt: p.createdAt,
-          author: p.author,
-          media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
-          counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
-        };
+        return serializePost(
+          p,
+          { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },
+          'profile'
+        );
       })
     );
 
@@ -240,6 +264,63 @@ postsRouter.get('/author/:authorId', async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: 'author_posts_failed' });
+  }
+});
+
+postsRouter.patch('/:postId/pin', requireAuth(), async (req, res) => {
+  try {
+    const user = (req as unknown as { user?: { userId: string } }).user;
+    if (!user) return res.status(401).json({ error: 'unauthorized' });
+
+    const { postId } = req.params;
+    const scope = String(req.body?.scope ?? '');
+    const pinned = !!req.body?.pinned;
+    if (scope !== 'profile' && scope !== 'feed') {
+      return res.status(400).json({ error: 'invalid_scope' });
+    }
+
+    const post = await prisma.post.findUnique({ where: { id: postId } });
+    if (!post) return res.status(404).json({ error: 'post_not_found' });
+
+    if (scope === 'profile') {
+      if (post.authorId !== user.userId) {
+        return res.status(403).json({ error: 'forbidden_not_author' });
+      }
+      if (pinned && !post.pinnedInProfileAt) {
+        const pinnedCount = await prisma.post.count({
+          where: { authorId: user.userId, pinnedInProfileAt: { not: null } },
+        });
+        if (pinnedCount >= 3) {
+          return res.status(400).json({ error: 'pin_limit_reached' });
+        }
+      }
+      const updated = await prisma.post.update({
+        where: { id: postId },
+        data: { pinnedInProfileAt: pinned ? new Date() : null },
+        select: { id: true, pinnedInProfileAt: true },
+      });
+      return res.json({ ok: true, isPinned: !!updated.pinnedInProfileAt });
+    }
+
+    const admin = await isUserAdmin(user.userId);
+    if (!admin) return res.status(403).json({ error: 'forbidden_admin_only' });
+    if (pinned && !post.pinnedInFeedAt) {
+      const pinnedCount = await prisma.post.count({
+        where: { pinnedInFeedAt: { not: null } },
+      });
+      if (pinnedCount >= 3) {
+        return res.status(400).json({ error: 'pin_limit_reached' });
+      }
+    }
+    const updated = await prisma.post.update({
+      where: { id: postId },
+      data: { pinnedInFeedAt: pinned ? new Date() : null },
+      select: { id: true, pinnedInFeedAt: true },
+    });
+    return res.json({ ok: true, isPinned: !!updated.pinnedInFeedAt });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'pin_post_failed' });
   }
 });
 
@@ -260,8 +341,22 @@ postsRouter.delete('/:postId', requireAuth(), async (req, res) => {
     }
 
     const mediaPaths = post.media.map((m) => m.path);
+    const postPreview = String(post.content || '').split('\n')[0]?.trim() || '';
     // 级联删除：Comment、PostMedia、PostLike、PostFavorite、PostShare 等由外键 ON DELETE CASCADE 处理
     await prisma.post.delete({ where: { id: postId } });
+    // 管理员删除他人帖子：只通知被删除者本人；并清理该帖相关系统删除通知
+    if (admin && post.authorId !== user.userId) {
+      await prisma.systemNotification.deleteMany({ where: { postId } });
+      await prisma.systemNotification.create({
+        data: {
+          recipientId: post.authorId,
+          actorId: user.userId,
+          kind: 'post_deleted_by_admin',
+          content: postPreview,
+          postId,
+        },
+      });
+    }
     for (const p of mediaPaths) unlinkStoredMediaFile(p);
 
     return res.json({ ok: true });

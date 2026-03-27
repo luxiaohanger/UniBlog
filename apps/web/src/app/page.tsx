@@ -17,7 +17,7 @@ export default function HomePage() {
       textAlign: 'center', 
       padding: '48px 16px'
     }}>
-      <h1 style={{ fontSize: '32px', marginBottom: '24px' }}>高校博客平台</h1>
+      <h1 style={{ fontSize: '32px', marginBottom: '24px' }}>UniBlog</h1>
       <p style={{ fontSize: '16px', marginBottom: '32px', color: '#666' }}>
         发帖、评论、点赞/收藏/转发，连接校园内外
       </p>

@@ -1,5 +1,5 @@
 import { API_BASE_URL } from './config';
-import { clearTokens, getAuthHeaders } from './token';
+import { clearTokens, getAuthHeaders, getTokens, setTokens } from './token';
 
 async function parseJsonSafe(res: Response) {
   const text = await res.text();
@@ -41,24 +41,54 @@ export async function apiFetch<T>(
     }
   }
   
-  try {
+  const doFetch = async (overrideHeaders?: Record<string, string>) => {
     const res = await fetch(url, {
       method,
-      headers,
-      body
+      headers: overrideHeaders ?? headers,
+      body,
     });
-    
-    console.log('API Response:', res.status, res.statusText);
-    
     const data = await parseJsonSafe(res);
+    return { res, data };
+  };
+
+  const tryRefresh = async () => {
+    const tokens = getTokens();
+    if (!tokens?.refreshToken) return false;
+    try {
+      const r = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+      });
+      const d = await parseJsonSafe(r);
+      if (!r.ok || !d?.accessToken) return false;
+      setTokens({ accessToken: d.accessToken, refreshToken: tokens.refreshToken });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  try {
+    let { res, data } = await doFetch();
     
     if (!res.ok) {
-      // 带 token 的请求若 401，清会话，避免子页面 replace('/login') 后又被 AppShell 送回圈子
+      // 带 token 的请求若 401：先尝试 refresh 并重试一次；仍失败才清 token
       if (res.status === 401 && !authPathNoBearer) {
-        clearTokens();
+        const refreshed = await tryRefresh();
+        if (refreshed) {
+          const retryHeaders: Record<string, string> = {
+            ...(options?.headers || {}),
+            ...getAuthHeaders(),
+          };
+          ({ res, data } = await doFetch(retryHeaders));
+        }
       }
-      const err = data?.error || `http_${res.status}`;
-      throw new Error(err);
+      if (!res.ok) {
+        if (res.status === 401 && !authPathNoBearer) clearTokens();
+        const err = data?.error || `http_${res.status}`;
+        throw new Error(err);
+      }
     }
     
     return data as T;

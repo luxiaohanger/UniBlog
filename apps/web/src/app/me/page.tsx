@@ -103,6 +103,7 @@ export default function MePage() {
             <PostCard
               key={post.id}
               post={post}
+              pinScope="profile"
               postState={
                 postStates[post.id] || {
                   liked: false,

@@ -51,8 +51,10 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
     fontSize: 'inherit',
     fontFamily: 'inherit',
     background: active ? '#f0f0f0' : 'transparent',
-    fontWeight: active ? 600 : 400,
-    transition: 'background 0.2s ease, font-weight 0.15s ease',
+    // 固定字重，避免切换时字形宽度变化导致“字符抖动”
+    fontWeight: 600,
+    opacity: active ? 1 : 0.78,
+    transition: 'background 0.2s ease, opacity 0.15s ease',
   });
 
   return (

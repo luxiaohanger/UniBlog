@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useLayoutEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useState, useLayoutEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '../lib/http';
 import { getTokens } from '../lib/token';
@@ -49,6 +49,7 @@ interface Post {
   createdAt: string;
   author: Author;
   media: Media[];
+  isPinned?: boolean;
   counts: PostCounts;
 }
 
@@ -75,6 +76,12 @@ interface PostCardProps {
   onUpdatePostState: (postId: string, newState: Partial<PostState>) => void;
   /** 删除成功后从列表移除（圈子/个人/收藏等） */
   onDeletePost?: (postId: string) => void;
+  /** 置顶作用域：profile=我的帖子，feed=圈子 */
+  pinScope?: 'profile' | 'feed';
+  /** 管理员删除权限是否生效（某些页面需禁用） */
+  allowAdminDelete?: boolean;
+  /** 从外部指定需要定位/高亮的评论 id（用于系统通知跳转） */
+  focusCommentId?: string | null;
 }
 
 export default function PostCard({
@@ -83,6 +90,9 @@ export default function PostCard({
   onUpdatePost,
   onUpdatePostState,
   onDeletePost,
+  pinScope,
+  allowAdminDelete = true,
+  focusCommentId = null,
 }: PostCardProps) {
   const isSubmitShortcut = (
     e: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -99,7 +109,10 @@ export default function PostCard({
   );
   const isOwnPost = meData?.user?.id === post.author.id;
   const isAdmin = meData?.user?.role === 'admin';
-  const canDeletePost = isOwnPost || isAdmin;
+  const canAdminDeleteHere = isAdmin && allowAdminDelete;
+  const canDeletePost = isOwnPost || canAdminDeleteHere;
+  const canPin =
+    (pinScope === 'profile' && isOwnPost) || (pinScope === 'feed' && isAdmin);
 
   const [expandedComments, setExpandedComments] = useState(false);
   const [commentBlock, setCommentBlock] = useState<CommentBlock | null>(null);
@@ -117,7 +130,37 @@ export default function PostCard({
   const [favAnim, setFavAnim] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  const [pinning, setPinning] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusCommentId) return;
+    let cancelled = false;
+    const run = async () => {
+      const tree = await reloadCommentTreeFromServer();
+      if (cancelled || !tree) return;
+      setExpandedComments(true);
+      setVisibleMainComments(Math.max(50, tree.mainComments.length));
+      const mainId = findMainIdForComment(tree, focusCommentId);
+      if (mainId) {
+        setExpandedLayers((p) => ({ ...p, [mainId]: true }));
+        const layerNum = tree.layers[focusCommentId];
+        if (layerNum != null) {
+          const sameLayer = tree.replyComments.filter((r: any) => tree.layers[r.id] === layerNum).length;
+          setVisibleLayerComments((p) => ({ ...p, [mainId]: Math.max(p[mainId] || 5, sameLayer) }));
+        } else {
+          setVisibleLayerComments((p) => ({ ...p, [mainId]: Math.max(p[mainId] || 5, 10) }));
+        }
+      }
+      setHighlightCommentId(focusCommentId);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusCommentId, post.id]);
 
   useLayoutEffect(() => {
     if (!highlightCommentId) return;
@@ -337,6 +380,29 @@ export default function PostCard({
     }
   };
 
+  const handleTogglePin = async () => {
+    if (!pinScope) return;
+    setPinning(true);
+    try {
+      const nextPinned = !post.isPinned;
+      await apiFetch(`/posts/${post.id}/pin`, {
+        method: 'PATCH',
+        body: { scope: pinScope, pinned: nextPinned },
+      });
+      onUpdatePost({ ...post, isPinned: nextPinned });
+      setShowActionMenu(false);
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (msg.includes('pin_limit_reached')) {
+        alert('最多只能置顶 3 篇帖子');
+      } else {
+        alert('置顶操作失败，请重试');
+      }
+    } finally {
+      setPinning(false);
+    }
+  };
+
   const handleDeleteComment = async (commentId: string) => {
     const cb = commentBlock;
     const isLayerRoot =
@@ -386,6 +452,7 @@ export default function PostCard({
 
   return (
     <div
+      id={`postcard-${post.id}`}
       style={{
         background: 'white',
         borderRadius: '12px',
@@ -403,25 +470,108 @@ export default function PostCard({
       >
         <div>
           <UserProfileLink userId={post.author.id} username={post.author.username} />
+          {post.isPinned && (
+            <div style={{ fontSize: '12px', color: '#d97706', marginTop: '4px' }}>
+              📌 置顶帖子
+            </div>
+          )}
           <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
             {new Date(post.createdAt).toLocaleString()}
           </div>
         </div>
-        {canDeletePost && (
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            style={{
-              fontSize: '13px',
-              color: '#999',
-              background: 'none',
-              border: '1px solid #e0e0e0',
-              borderRadius: '6px',
-              padding: '4px 10px',
-            }}
-          >
-            {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
-          </button>
+        {canPin ? (
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              aria-label="更多操作"
+              onClick={() => setShowActionMenu((v) => !v)}
+              style={{
+                fontSize: '22px',
+                color: '#999',
+                background: 'none',
+                border: '1px solid #e0e0e0',
+                borderRadius: '6px',
+                width: '40px',
+                height: '40px',
+                lineHeight: 1,
+                cursor: 'pointer',
+              }}
+            >
+              ⋮
+            </button>
+            {showActionMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '36px',
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
+                  minWidth: '148px',
+                  zIndex: 30,
+                  overflow: 'hidden',
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={pinning}
+                  onClick={handleTogglePin}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '10px 14px',
+                    border: 'none',
+                    background: '#fff',
+                    fontSize: '14px',
+                    cursor: pinning ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {post.isPinned ? '取消置顶' : '置顶'}
+                </button>
+                {canDeletePost && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActionMenu(false);
+                      setShowDeleteConfirm(true);
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                    padding: '10px 14px',
+                      border: 'none',
+                      borderTop: '1px solid #f1f5f9',
+                      background: '#fff',
+                      color: '#c0392b',
+                    fontSize: '14px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          canDeletePost && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              style={{
+                fontSize: '13px',
+                color: '#999',
+                background: 'none',
+                border: '1px solid #e0e0e0',
+                borderRadius: '6px',
+                padding: '4px 10px',
+              }}
+            >
+              {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
+            </button>
+          )
         )}
       </div>
 

@@ -1,16 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/http';
 import { getTokens } from '../../lib/token';
 import PostCard from '../../components/PostCard';
 
 export default function CirclesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [postStates, setPostStates] = useState<Record<string, any>>({});
+  const focusPostId = searchParams.get('postId');
+  const focusCommentId = searchParams.get('commentId');
 
   useEffect(() => {
     const tokens = getTokens();
@@ -44,6 +47,17 @@ export default function CirclesPage() {
     fetchPosts();
   }, [router]);
 
+  useEffect(() => {
+    if (!focusPostId) return;
+    if (!posts.length) return;
+    requestAnimationFrame(() => {
+      document.getElementById(`postcard-${focusPostId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }, [focusPostId, posts.length]);
+
   const fetchPostState = async (postId: string) => {
     try {
       const data = await apiFetch<any>(`/social/posts/${postId}/states`);
@@ -68,12 +82,14 @@ export default function CirclesPage() {
           <PostCard
             key={post.id}
             post={post}
+            pinScope="feed"
             postState={
               postStates[post.id] || {
                 liked: false,
                 favorited: false,
               }
             }
+            focusCommentId={focusPostId === post.id ? focusCommentId : null}
             onUpdatePost={(updated) =>
               setPosts((prev) =>
                 prev.map((p) => (p.id === updated.id ? updated : p))

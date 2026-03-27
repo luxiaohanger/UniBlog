@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '../../../lib/http';
 import { getTokens } from '../../../lib/token';
 import PostCard from '../../../components/PostCard';
+import AddFriendButton from '../../../components/AddFriendButton';
 
 export default function UserPublicPage() {
   const params = useParams();
@@ -79,8 +80,22 @@ export default function UserPublicPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: '22px', marginBottom: '8px' }}>「{profile.username}」的主页</h1>
-      <p style={{ fontSize: '14px', color: '#666', marginBottom: '24px' }}>Ta 发布的帖子</p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+          marginBottom: '8px',
+        }}
+      >
+        <h1 style={{ fontSize: '22px' }}>「{profile.username}」的主页</h1>
+        <AddFriendButton userId={profile.id} />
+      </div>
+      <p style={{ fontSize: '14px', color: '#666', marginBottom: '24px' }}>
+        Ta 发布的帖子
+      </p>
       {posts.length === 0 ? (
         <div
           style={{
@@ -100,6 +115,7 @@ export default function UserPublicPage() {
             <PostCard
               key={post.id}
               post={post}
+              allowAdminDelete={false}
               postState={
                 postStates[post.id] || {
                   liked: false,

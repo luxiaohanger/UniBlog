@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -22,6 +28,15 @@ model User {
   postLikes     PostLike[]
   postFavorites PostFavorite[]
   postShares    PostShare[]
+
+  sentFriendships     Friendship[] @relation("FriendshipSender")
+  receivedFriendships Friendship[] @relation("FriendshipReceiver")
+
+  sentMessages     ChatMessage[] @relation("ChatMessageSender")
+  receivedMessages ChatMessage[] @relation("ChatMessageReceiver")
+
+  receivedSystemNotifications SystemNotification[] @relation("SystemNotificationRecipient")
+  sentSystemNotifications     SystemNotification[] @relation("SystemNotificationActor")
 }
 
 model RefreshToken {
@@ -44,6 +59,10 @@ model Post {
   content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// 圈子页置顶时间（仅管理员可操作，全局最多 3 篇）
+  pinnedInFeedAt DateTime?
+  /// 作者主页/我的帖子置顶时间（仅作者可操作，每人最多 3 篇）
+  pinnedInProfileAt DateTime?
 
   author    User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
   media     PostMedia[]
@@ -51,6 +70,9 @@ model Post {
   likes     PostLike[]
   favorites PostFavorite[]
   shares    PostShare[]
+
+  @@index([pinnedInFeedAt])
+  @@index([authorId, pinnedInProfileAt])
 }
 
 model PostMedia {
@@ -121,4 +143,52 @@ model PostShare {
   @@unique([postId, sharerId])
   @@index([postId])
   @@index([sharerId])
+}
+
+model Friendship {
+  id         String           @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     FriendshipStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+
+  sender   User @relation("FriendshipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([status])
+}
+
+model ChatMessage {
+  id         String   @id @default(cuid())
+  content    String
+  senderId   String
+  receiverId String
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ChatMessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId, createdAt])
+  @@index([receiverId, senderId, createdAt])
+}
+
+model SystemNotification {
+  id          String   @id @default(cuid())
+  recipientId String
+  actorId     String?
+  kind        String
+  content     String?
+  postId      String?
+  commentId   String?
+  createdAt   DateTime @default(now())
+
+  recipient User  @relation("SystemNotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor     User? @relation("SystemNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, createdAt])
+  @@index([postId])
+  @@index([commentId])
 }

@@ -100,6 +100,34 @@ authRouter.post('/logout', async (req, res) => {
   }
 });
 
+authRouter.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body as { refreshToken?: string };
+    if (!refreshToken) return res.status(400).json({ error: 'missing_refresh_token' });
+
+    const refreshTokenHash = hashToken(refreshToken);
+    const stored = await prisma.refreshToken.findFirst({
+      where: {
+        tokenHash: refreshTokenHash,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: { user: { select: { id: true, email: true, username: true, role: true } } },
+    });
+    if (!stored) return res.status(401).json({ error: 'invalid_refresh_token' });
+
+    const accessToken = signAccessToken({ sub: stored.userId, email: stored.user.email });
+    return res.json({
+      accessToken,
+      refreshToken,
+      user: stored.user,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'refresh_failed' });
+  }
+});
+
 authRouter.get('/me', requireAuth(), async (req, res) => {
   const user = (req as unknown as { user?: { userId: string } }).user;
   if (!user) return res.status(401).json({ error: 'unauthorized' });
