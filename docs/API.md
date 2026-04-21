@@ -14,10 +14,12 @@
 | --- | --- | --- |
 | 400 | `missing_*` / `invalid_*` | 参数缺失或非法 |
 | 401 | `missing_authorization` / `invalid_or_expired_token` / `unauthorized` | 需要登录 |
-| 403 | `forbidden_not_author` / `forbidden_admin_only` / `forbidden_not_friends` | 权限不足 |
+| 403 | `forbidden_not_author` / `forbidden_admin_only` / `forbidden_not_friends` / `edit_window_expired` | 权限不足或超出编辑窗 |
 | 404 | `*_not_found` | 资源不存在 |
 | 409 | `email_exists` / `already_friends` / `request_already_sent` | 业务冲突 |
-| 500 | `*_failed` / `internal_error` | 服务器内部异常 |
+| 429 | `code_cooldown` | 验证码发送过于频繁 |
+| 500 | `*_failed` / `internal_error` / `mailer_not_configured` | 服务器内部异常 |
+| 502 | `mail_send_failed` | SMTP 发送失败 |
 
 ## 健康检查
 
@@ -31,9 +33,32 @@
 
 ## 鉴权 `/auth`
 
+### `POST /auth/email/send-code`
+
+发送邮箱验证码。复用在「注册」与「找回密码」两种场景，通过 `purpose` 区分。
+
+- 注册用途：邮箱已注册时返回 `409 email_exists`。
+- 找回密码用途：邮箱是否已注册都统一返回 `{ ok: true }`，不做账户枚举提示。
+- 同邮箱 + 同用途存在未消费验证码时，60 秒内不得重发（`429 code_cooldown`）。
+- 服务器未配置 SMTP 时返回 `500 mailer_not_configured`。
+
+**Body**
+
+```json
+{ "email": "a@b.com", "purpose": "register" }
+```
+
+`purpose` 仅支持 `"register"` 或 `"reset_password"`。
+
+**200 Response**
+
+```json
+{ "ok": true }
+```
+
 ### `POST /auth/register`
 
-注册新用户。
+注册新用户。需先通过 `/auth/email/send-code` 获取 `purpose=register` 的验证码。
 
 **Body**
 
@@ -41,7 +66,8 @@
 {
   "email": "a@b.com",
   "username": "alice",
-  "password": "at-least-6-chars"
+  "password": "at-least-6-chars",
+  "code": "123456"
 }
 ```
 
@@ -50,6 +76,31 @@
 ```json
 { "user": { "id": "...", "email": "...", "username": "...", "role": "user" } }
 ```
+
+**常见错误**：`missing_code` / `invalid_code` / `code_expired` / `email_exists` / `username_exists`。
+
+### `POST /auth/password/reset`
+
+通过邮箱验证码重置密码。需先通过 `/auth/email/send-code` 获取 `purpose=reset_password` 的验证码。
+成功后会吊销该用户全部 Refresh Token，已登录的其他会话将需要重新登录。
+
+**Body**
+
+```json
+{
+  "email": "a@b.com",
+  "code": "123456",
+  "newPassword": "at-least-6-chars"
+}
+```
+
+**200 Response**
+
+```json
+{ "ok": true }
+```
+
+**常见错误**：`missing_code` / `invalid_code`（含邮箱未注册）/ `code_expired` / `password_too_short`。
 
 ### `POST /auth/login`
 
@@ -65,15 +116,24 @@
 {
   "accessToken": "<jwt>",
   "refreshToken": "<hex>",
-  "user": { "id": "...", "email": "...", "username": "...", "role": "user" }
+  "user": {
+    "id": "...",
+    "email": "...",
+    "username": "...",
+    "role": "user",
+    "displayName": null,
+    "avatarUrl": null
+  }
 }
 ```
+
+> `user` 统一遵循「公开用户」结构：`id / username / displayName / avatarUrl` 四件套；`displayName` 为空时前端回退到 `username`，`avatarUrl` 为空时回退到「首字母渐变圆」。`/auth/me` 额外返回 `email / role / bio`。
 
 ### `POST /auth/refresh`
 
 **Body**：`{ "refreshToken": "..." }`
 
-**200**：返回新 `accessToken` 与 `user`。Refresh Token 仍然有效且未吊销。
+**200**：返回新 `accessToken` 与 `user`（含 `displayName` / `avatarUrl`）。Refresh Token 仍然有效且未吊销。
 
 ### `POST /auth/logout`
 
@@ -81,7 +141,42 @@
 
 ### `GET /auth/me` 🔒
 
-返回当前登录用户信息。
+返回当前登录用户信息：`{ user: { id, email, username, role, displayName, avatarUrl, bio } }`。
+
+### `PATCH /auth/me` 🔒
+
+更新当前用户资料。字段均可选；传 `null` 或 `""` 视为清空。
+
+**Body**
+
+```json
+{ "displayName": "Alice", "bio": "hello world" }
+```
+
+**200**：`{ user: <公开用户 + email + role> }`
+
+**常见错误**
+
+| 状态 | error | 说明 |
+| --- | --- | --- |
+| 400 | `display_name_too_long` | `displayName` 超过 40 字 |
+| 400 | `bio_too_long` | `bio` 超过 200 字 |
+| 400 | `invalid_display_name` / `invalid_bio` | 非字符串类型 |
+
+### `POST /auth/me/avatar` 🔒（`multipart/form-data`）
+
+上传/替换头像。字段名 `file`；允许 `image/jpeg|png|webp|gif`；单文件 ≤ 5 MB。上传成功后旧头像文件会被异步清理。
+
+**200**：`{ user: <公开用户 + email + role> }`，其中 `avatarUrl` 指向新文件。
+
+**常见错误**
+
+| 状态 | error | 说明 |
+| --- | --- | --- |
+| 400 | `missing_file` | 没有上传 `file` 字段 |
+| 400 | `invalid_avatar_mime` | 文件类型不支持 |
+| 400 | `avatar_too_large` | 文件超过 5 MB |
+| 500 | `avatar_upload_failed` | 落盘或入库失败（会尝试清理刚上传的临时文件） |
 
 ---
 
@@ -117,6 +212,27 @@
 ### `GET /posts/:postId`
 
 帖子详情，包含 `comments`、`counts`（comments/likes/favorites/shares）。
+
+### `PATCH /posts/:postId` 🔒
+
+作者在发布后 **3 天内**可以编辑帖子正文；超期返回 `403 edit_window_expired`。本期仅支持修改正文，不支持增删媒体。
+
+**Body**
+
+```json
+{ "content": "更新后的正文" }
+```
+
+**200**：`{ post: <serializePost> }`（不含 scope，因此 `isPinned=false`；前端合并时请仅取 `content` 避免覆盖作用域状态）
+
+**常见错误**
+
+| 状态 | error | 说明 |
+| --- | --- | --- |
+| 400 | `missing_content` | 正文 trim 后为空 |
+| 403 | `forbidden_not_author` | 非作者编辑他人帖 |
+| 403 | `edit_window_expired` | 距发布已超过 3 天 |
+| 404 | `post_not_found` | 帖子不存在或已删 |
 
 ### `PATCH /posts/:postId/pin` 🔒
 
@@ -170,7 +286,7 @@
 
 #### `DELETE /social/posts/:postId/comments/:commentId` 🔒
 
-删除单条评论，仅管理员。
+删除单条评论，仅管理员。若目标为「层主评论」且存在同层回复，拒绝删除并返回 `comment_has_replies_use_layer_endpoint`（应改用上面的 `/comments/layer/:mainCommentId` 整层删除，避免孤儿回复因 `layerMainId` 被 `SetNull` 而错位到其它层）。
 
 ### 互动
 
@@ -222,6 +338,7 @@
 | `post_favorited` | 我发的帖子被收藏 |
 | `post_deleted_by_admin` | 我的帖子被管理员删除 |
 | `comment_deleted_by_admin` | 我的评论被管理员删除 |
+| `report_resolved` | 我的帖子/评论因举报被管理员删除 |
 
 响应：
 
@@ -231,7 +348,7 @@
     {
       "kind": "post_commented",
       "createdAt": "...",
-      "actor": { "id": "...", "username": "..." },
+      "actor": { "id": "...", "username": "...", "displayName": null, "avatarUrl": null },
       "post": { "id": "...", "content": "..." },
       "comment": { "id": "...", "content": "..." }
     }
@@ -239,6 +356,91 @@
   ]
 }
 ```
+
+> 所有 `actor / sender / receiver / author` 字段统一使用「公开用户」结构 `{ id, username, displayName, avatarUrl }`（见 `/auth` 段落说明）。
+
+### 举报
+
+#### `POST /social/reports` 🔒
+
+对帖子 / 评论 / 用户发起举报。同一举报人对同一目标仅允许一条 `open` 状态的举报。
+
+**Body**
+
+```json
+{ "targetType": "post" | "comment" | "user", "targetId": "<id>", "reason": "最多 200 字" }
+```
+
+**201**：`{ report: { id, targetType, targetId, status, createdAt } }`
+
+**常见错误**
+
+| 状态 | error | 说明 |
+| --- | --- | --- |
+| 400 | `invalid_target_type` | 目标类型非法 |
+| 400 | `missing_target_id` / `missing_reason` | 参数缺失 |
+| 400 | `reason_too_long` | 理由超过 200 字 |
+| 400 | `cannot_report_self` | 举报对象是本人（帖子/评论的作者或 user 本人） |
+| 404 | `target_not_found` | 目标不存在或已删除 |
+| 409 | `already_reported` | 同目标已有 open 举报 |
+
+#### `GET /social/admin/reports?status=open&take=50` 🔒（管理员）
+
+- `status` 可选：`open`（默认）/ `resolved` / `rejected` / `all`。
+- `take`：1~100，默认 50。
+- 非管理员返回 `403 forbidden_admin_only`。
+
+**200**
+
+```jsonc
+{
+  "reports": [
+    {
+      "id": "...",
+      "targetType": "post",
+      "targetId": "...",
+      "reason": "...",
+      "status": "open",
+      "reviewerNote": null,
+      "reviewedAt": null,
+      "createdAt": "...",
+      "reporter": { "id": "...", "username": "...", "displayName": null, "avatarUrl": null },
+      "targetUser": { "id": "...", "username": "...", "displayName": null, "avatarUrl": null },
+      "reviewer": null,
+      "targetSnapshot": { "kind": "post", "content": "帖子正文摘要" }
+    }
+  ]
+}
+```
+
+- `targetSnapshot.kind`：`post` / `post_deleted` / `comment` / `comment_deleted` / `user`，用于前端展示上下文；已删目标只下发类型标记。
+
+#### `PATCH /social/admin/reports/:reportId` 🔒（管理员）
+
+**Body**
+
+```json
+{ "action": "resolve" | "reject", "note": "审核留言（可选，<=500 字）" }
+```
+
+- `action=resolve`：标记通过。
+  - `targetType=post`：同步删除帖子（级联清理媒体），并给作者下发 `report_resolved` 系统通知；同目标的其它 `open` 举报也被置为 `resolved`。
+  - `targetType=comment`：同步删除这一条评论，向作者下发 `report_resolved`；**若目标是「层主评论」，会连同同层回复一并删除**，并向同层回复作者下发 `comment_deleted_by_admin`（避免回复在前端回落到 `@用户名` 启发式被错位）。同目标其它 `open` 联动 `resolved`。
+  - `targetType=user`：仅标记为 `resolved`，不自动执行任何处置，管理员需在后台另行处理。
+- `action=reject`：仅更新状态与留言，不触及目标。
+- 只能处理 `status=open` 的举报；否则 `409 report_not_open`。
+
+**200**：`{ report: <展开的 report，含 reporter/targetUser/reviewer> }`
+
+**常见错误**
+
+| 状态 | error | 说明 |
+| --- | --- | --- |
+| 400 | `invalid_action` | `action` 不是 `resolve` / `reject` |
+| 400 | `reviewer_note_too_long` | 留言超过 500 字 |
+| 403 | `forbidden_admin_only` | 非管理员 |
+| 404 | `report_not_found` | 举报不存在 |
+| 409 | `report_not_open` | 举报已不是 `open` 状态 |
 
 ---
 

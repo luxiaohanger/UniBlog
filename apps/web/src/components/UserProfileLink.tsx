@@ -9,6 +9,8 @@ import { getTokens } from '../lib/token';
 type Props = {
   userId: string;
   username: string;
+  /** 可选展示名；为空时回退到 username */
+  displayName?: string | null;
   style?: CSSProperties;
 };
 
@@ -22,9 +24,10 @@ function useProfileHref(userId: string) {
   return selfId === userId ? '/me' : `/user/${userId}`;
 }
 
-/** 帖子/评论中用户名：本人进「我的」，他人进对方主页 */
-export function UserProfileLink({ userId, username, style }: Props) {
+/** 帖子/评论中用户名：本人进「我的」，他人进对方主页；优先展示 displayName，回退 username */
+export function UserProfileLink({ userId, username, displayName, style }: Props) {
   const href = useProfileHref(userId);
+  const label = displayName?.trim() || username;
 
   return (
     <Link
@@ -39,8 +42,9 @@ export function UserProfileLink({ userId, username, style }: Props) {
         verticalAlign: 'bottom',
         ...style,
       }}
+      title={displayName ? `@${username}` : undefined}
     >
-      {username}
+      {label}
     </Link>
   );
 }

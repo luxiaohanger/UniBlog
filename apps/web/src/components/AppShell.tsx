@@ -4,8 +4,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import Header from './Header';
 import { getTokens } from '../lib/token';
 
-/** 未登录仅允许访问：首页、登录、注册 */
-const PUBLIC_PATHS = new Set(['/', '/login', '/register']);
+/** 未登录仅允许访问：首页、登录、注册、找回密码 */
+const PUBLIC_PATHS = new Set(['/', '/login', '/register', '/forgot-password']);
 
 function isPublicPath(path: string) {
   return PUBLIC_PATHS.has(path);

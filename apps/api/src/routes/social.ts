@@ -3,6 +3,7 @@ import { buildCommentTree } from '../lib/commentTree';
 import { prisma } from '../lib/prisma';
 import { isUserAdmin } from '../lib/roles';
 import { requireAuth } from '../middleware/auth';
+import { publicUserSelect, serializePublicUser } from '../lib/serializeUser';
 
 export const socialRouter = Router();
 
@@ -32,7 +33,7 @@ socialRouter.post('/posts/:postId/comments', requireAuth(), async (req, res) => 
 
     const comment = await prisma.comment.create({
       data: { postId, authorId: user.userId, content: text, layerMainId },
-      include: { author: { select: { id: true, username: true } } },
+      include: { author: { select: publicUserSelect } },
     });
 
     return res.status(201).json({
@@ -40,7 +41,7 @@ socialRouter.post('/posts/:postId/comments', requireAuth(), async (req, res) => 
         id: comment.id,
         content: comment.content,
         createdAt: comment.createdAt,
-        author: comment.author,
+        author: serializePublicUser(comment.author),
         layerMainId: comment.layerMainId,
       },
     });
@@ -70,7 +71,7 @@ socialRouter.delete('/posts/:postId/comments/layer/:mainCommentId', requireAuth(
 
     const rows = await prisma.comment.findMany({
       where: { postId },
-      include: { author: { select: { id: true, username: true } } },
+      include: { author: { select: publicUserSelect } },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -80,7 +81,7 @@ socialRouter.delete('/posts/:postId/comments/layer/:mainCommentId', requireAuth(
       id: c.id,
       content: c.content,
       createdAt: c.createdAt,
-      author: c.author,
+      author: serializePublicUser(c.author),
       layerMainId: c.layerMainId,
     }));
 
@@ -141,6 +142,16 @@ socialRouter.delete('/posts/:postId/comments/:commentId', requireAuth(), async (
     const comment = await prisma.comment.findUnique({ where: { id: commentId } });
     if (!comment) return res.status(404).json({ error: 'comment_not_found' });
     if (comment.postId !== postId) return res.status(400).json({ error: 'comment_post_mismatch' });
+
+    // 安全拦截：如果目标是「层主评论」（有同层回复），必须走 layer 端点整层删除。
+    // 否则 Prisma 的 onDelete: SetNull 会把回复变成孤儿，前端回退到 @用户名 启发式
+    // 可能将其错误归入其他层。
+    if (comment.layerMainId == null) {
+      const replyCount = await prisma.comment.count({ where: { layerMainId: commentId } });
+      if (replyCount > 0) {
+        return res.status(400).json({ error: 'comment_has_replies_use_layer_endpoint' });
+      }
+    }
 
     await prisma.comment.delete({ where: { id: commentId } });
     await prisma.systemNotification.deleteMany({ where: { commentId } });
@@ -387,7 +398,7 @@ socialRouter.get('/friends/requests/pending', requireAuth(), async (req, res) =>
     const rows = await prisma.friendship.findMany({
       where: { receiverId: user.userId, status: 'PENDING' },
       orderBy: { createdAt: 'desc' },
-      include: { sender: { select: { id: true, username: true } } },
+      include: { sender: { select: publicUserSelect } },
       take: 50,
     });
 
@@ -396,7 +407,7 @@ socialRouter.get('/friends/requests/pending', requireAuth(), async (req, res) =>
         id: r.id,
         status: r.status,
         createdAt: r.createdAt,
-        sender: r.sender,
+        sender: serializePublicUser(r.sender),
       })),
     });
   } catch (e) {
@@ -448,8 +459,8 @@ socialRouter.get('/friends/list', requireAuth(), async (req, res) => {
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        sender: { select: { id: true, username: true } },
-        receiver: { select: { id: true, username: true } },
+        sender: { select: publicUserSelect },
+        receiver: { select: publicUserSelect },
       },
       take: 200,
     });
@@ -457,8 +468,7 @@ socialRouter.get('/friends/list', requireAuth(), async (req, res) => {
     const friends = rows.map((r) => {
       const friend = r.senderId === user.userId ? r.receiver : r.sender;
       return {
-        id: friend.id,
-        username: friend.username,
+        ...serializePublicUser(friend),
         relationStatus: r.status,
       };
     });
@@ -604,18 +614,20 @@ socialRouter.post('/messages/:friendId', requireAuth(), async (req, res) => {
 
 // ===== 系统信息（通知）=====
 
+type ActorPublic = ReturnType<typeof serializePublicUser>;
+
 type NotificationItem =
   | {
       kind: 'post_commented';
       createdAt: Date;
-      actor: { id: string; username: string };
+      actor: ActorPublic;
       post: { id: string; content: string };
       comment: { id: string; content: string };
     }
   | {
       kind: 'comment_replied';
       createdAt: Date;
-      actor: { id: string; username: string };
+      actor: ActorPublic;
       post: { id: string; content: string };
       comment: { id: string; content: string };
       targetComment: { id: string; content: string } | null;
@@ -624,13 +636,13 @@ type NotificationItem =
   | {
       kind: 'post_liked' | 'post_favorited';
       createdAt: Date;
-      actor: { id: string; username: string };
+      actor: ActorPublic;
       post: { id: string; content: string };
     }
   | {
-      kind: 'post_deleted_by_admin' | 'comment_deleted_by_admin';
+      kind: 'post_deleted_by_admin' | 'comment_deleted_by_admin' | 'report_resolved';
       createdAt: Date;
-      actor: { id: string; username: string } | null;
+      actor: ActorPublic | null;
       post: { id: string; content: string };
       comment?: { id: string; content: string };
     };
@@ -657,7 +669,7 @@ socialRouter.get('/notifications', requireAuth(), async (req, res) => {
       orderBy: { createdAt: 'desc' },
       take: takeN,
       include: {
-        author: { select: { id: true, username: true } },
+        author: { select: publicUserSelect },
         post: { select: { id: true, content: true } },
       },
     });
@@ -673,7 +685,7 @@ socialRouter.get('/notifications', requireAuth(), async (req, res) => {
       orderBy: { createdAt: 'desc' },
       take: takeN,
       include: {
-        author: { select: { id: true, username: true } },
+        author: { select: publicUserSelect },
         post: { select: { id: true, content: true } },
         layerRoot: { select: { id: true, content: true, authorId: true } },
       },
@@ -712,34 +724,37 @@ socialRouter.get('/notifications', requireAuth(), async (req, res) => {
         where: { userId: { not: user.userId }, post: { authorId: user.userId } },
         orderBy: { createdAt: 'desc' },
         take: takeN,
-        include: { user: { select: { id: true, username: true } }, post: { select: { id: true, content: true } } },
+        include: { user: { select: publicUserSelect }, post: { select: { id: true, content: true } } },
       }),
       prisma.postFavorite.findMany({
         where: { userId: { not: user.userId }, post: { authorId: user.userId } },
         orderBy: { createdAt: 'desc' },
         take: takeN,
-        include: { user: { select: { id: true, username: true } }, post: { select: { id: true, content: true } } },
+        include: { user: { select: publicUserSelect }, post: { select: { id: true, content: true } } },
       }),
     ]);
     const adminDeletes = await prisma.systemNotification.findMany({
-      where: { recipientId: user.userId, kind: { in: ['post_deleted_by_admin', 'comment_deleted_by_admin'] } },
+      where: {
+        recipientId: user.userId,
+        kind: { in: ['post_deleted_by_admin', 'comment_deleted_by_admin', 'report_resolved'] },
+      },
       orderBy: { createdAt: 'desc' },
       take: takeN,
-      include: { actor: { select: { id: true, username: true } } },
+      include: { actor: { select: publicUserSelect } },
     });
 
     const items: NotificationItem[] = [
       ...postComments.map((c) => ({
         kind: 'post_commented' as const,
         createdAt: c.createdAt,
-        actor: c.author,
+        actor: serializePublicUser(c.author),
         post: c.post,
         comment: { id: c.id, content: c.content },
       })),
       ...commentReplies.map((c) => ({
         kind: 'comment_replied' as const,
         createdAt: c.createdAt,
-        actor: c.author,
+        actor: serializePublicUser(c.author),
         post: c.post,
         comment: { id: c.id, content: c.content },
         targetComment: findTargetComment(c),
@@ -748,29 +763,22 @@ socialRouter.get('/notifications', requireAuth(), async (req, res) => {
       ...likes.map((l) => ({
         kind: 'post_liked' as const,
         createdAt: l.createdAt,
-        actor: l.user,
+        actor: serializePublicUser(l.user),
         post: l.post,
       })),
       ...favorites.map((f) => ({
         kind: 'post_favorited' as const,
         createdAt: f.createdAt,
-        actor: f.user,
+        actor: serializePublicUser(f.user),
         post: f.post,
       })),
-      ...adminDeletes.map((n: {
-        kind: string;
-        createdAt: Date;
-        actor: { id: string; username: string } | null;
-        postId: string | null;
-        content: string | null;
-        commentId: string | null;
-      }) => ({
-        kind: n.kind as 'post_deleted_by_admin' | 'comment_deleted_by_admin',
+      ...adminDeletes.map((n) => ({
+        kind: n.kind as 'post_deleted_by_admin' | 'comment_deleted_by_admin' | 'report_resolved',
         createdAt: n.createdAt,
-        actor: n.actor ? { id: n.actor.id, username: n.actor.username } : null,
+        actor: n.actor ? serializePublicUser(n.actor) : null,
         post: { id: n.postId || '', content: n.content || '' },
         comment:
-          n.kind === 'comment_deleted_by_admin' && n.commentId
+          (n.kind === 'comment_deleted_by_admin' || n.kind === 'report_resolved') && n.commentId
             ? { id: n.commentId, content: n.content || '' }
             : undefined,
       })),

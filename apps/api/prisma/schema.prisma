@@ -13,6 +13,20 @@ enum FriendshipStatus {
   DECLINED
 }
 
+/// 举报目标类型：post 帖子 / comment 评论 / user 用户
+enum ReportTargetType {
+  post
+  comment
+  user
+}
+
+/// 举报处理状态：open 待审核 / resolved 已通过（目标已处理）/ rejected 驳回
+enum ReportStatus {
+  open
+  resolved
+  rejected
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -21,6 +35,12 @@ model User {
   /// 权限：user 普通用户；admin 管理员（可删任意帖与单条评论）
   role         String   @default("user")
   createdAt    DateTime @default(now())
+  /// 展示名；为空时前端回退到 username
+  displayName  String?
+  /// 简介，建议 <= 200 字
+  bio          String?
+  /// 头像相对路径，形如 uploads/avatar-<ts>-<rand>.<ext>
+  avatarPath   String?
 
   refreshTokens RefreshToken[]
   posts         Post[]
@@ -37,6 +57,10 @@ model User {
 
   receivedSystemNotifications SystemNotification[] @relation("SystemNotificationRecipient")
   sentSystemNotifications     SystemNotification[] @relation("SystemNotificationActor")
+
+  filedReports    Report[] @relation("ReportReporter")
+  reportsAgainst  Report[] @relation("ReportTargetUser")
+  reviewedReports Report[] @relation("ReportReviewer")
 }
 
 model RefreshToken {
@@ -51,6 +75,26 @@ model RefreshToken {
 
   @@index([userId])
   @@index([tokenHash])
+}
+
+/// 邮箱验证码（用于注册校验、找回密码等场景）
+/// 不与 User 关联：注册场景下用户尚未创建；找回密码场景同样以邮箱为准。
+model EmailVerification {
+  id         String    @id @default(cuid())
+  email      String
+  /// 验证码的 sha256 哈希，原码不落库
+  codeHash   String
+  /// 用途：register / reset_password
+  purpose    String
+  /// 错误尝试次数，达到阈值即作废
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  /// 消费时间：成功校验后写入，防重放
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, purpose, createdAt])
+  @@index([expiresAt])
 }
 
 model Post {
@@ -191,4 +235,36 @@ model SystemNotification {
   @@index([recipientId, createdAt])
   @@index([postId])
   @@index([commentId])
+}
+
+/// 用户举报：按目标类型分三类，由管理员审核
+/// - targetType=post/comment：同一举报人对同一目标只允许一条 open 举报（应用层去重）
+/// - targetType=user：同一举报人对同一被举报用户只允许一条 open 举报
+/// - 审核通过（resolved）会触发删帖 / 删单条评论（由应用层执行），并写入 SystemNotification
+model Report {
+  id            String           @id @default(cuid())
+  reporterId    String
+  targetType    ReportTargetType
+  /// 关联目标 id：post -> Post.id，comment -> Comment.id，user -> User.id
+  targetId      String
+  /// 被举报用户（冗余存储以便管理员检索与排序；删用户时置空，保留历史）
+  targetUserId  String?
+  /// 举报原因文案，<= 200 字（业务层校验）
+  reason        String
+  status        ReportStatus     @default(open)
+  /// 审核人 id（管理员），处理后填入；管理员被删时置空
+  reviewerId    String?
+  /// 审核人留言，可为空
+  reviewerNote  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime         @default(now())
+
+  reporter   User  @relation("ReportReporter",   fields: [reporterId],   references: [id], onDelete: Cascade)
+  targetUser User? @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  reviewer   User? @relation("ReportReviewer",   fields: [reviewerId],   references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+  @@index([reporterId, createdAt])
+  @@index([targetUserId, status])
 }

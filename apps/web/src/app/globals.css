@@ -634,11 +634,18 @@ img {
   letter-spacing: -0.02em;
 }
 
-/* 响应式文本宽度（CJK 1em≈1字）*/
+/* 响应式文本宽度（CJK 1em≈1字）——仅用于阅读态文字节点 */
 .text-line-fit {
   max-width: clamp(18em, 40vw, 32em);
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* 表单控件不应被阅读宽度钳制：输入框/文本域需跟随容器宽度，
+   否则 PostCard 评论框、登录表单会出现"框子小于布局范围"的错位。 */
+input.text-line-fit,
+textarea.text-line-fit {
+  max-width: none;
 }
 
 /* ---------- 无障碍：尊重减少动效偏好 ---------- */

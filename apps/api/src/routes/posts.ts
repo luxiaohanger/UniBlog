@@ -5,6 +5,13 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
 import { isUserAdmin } from '../lib/roles';
+import {
+  publicUserSelect,
+  publicUserWithBioSelect,
+  serializePublicUser,
+  type PublicUser,
+  type PublicUserInput,
+} from '../lib/serializeUser';
 
 export const postsRouter = Router();
 
@@ -45,7 +52,7 @@ function serializePost(
     id: string;
     content: string;
     createdAt: Date;
-    author: { id: string; username: string };
+    author: PublicUserInput;
     media: Array<{ id: string; kind: string; path: string }>;
     pinnedInFeedAt: Date | null;
     pinnedInProfileAt: Date | null;
@@ -57,7 +64,7 @@ function serializePost(
     id: p.id,
     content: p.content,
     createdAt: p.createdAt,
-    author: p.author,
+    author: serializePublicUser(p.author) as PublicUser,
     media: p.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
     isPinned: isPinnedByScope(p, scope),
     counts,
@@ -102,11 +109,16 @@ postsRouter.post('/', requireAuth(), upload.array('media', 3), async (req, res) 
       },
       include: {
         media: true,
-        author: { select: { id: true, username: true } },
+        author: { select: publicUserSelect },
       },
     });
 
-    return res.status(201).json({ post });
+    return res.status(201).json({
+      post: {
+        ...post,
+        author: serializePublicUser(post.author),
+      },
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: 'create_post_failed' });
@@ -118,7 +130,7 @@ postsRouter.get('/feed', async (_req, res) => {
     const posts = await prisma.post.findMany({
       orderBy: [{ pinnedInFeedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: 30,
-      include: { author: { select: { id: true, username: true } }, media: true },
+      include: { author: { select: publicUserSelect }, media: true },
     });
 
     const result = await Promise.all(
@@ -154,7 +166,7 @@ postsRouter.get('/mine', requireAuth(), async (req, res) => {
       where: { authorId: user.userId },
       orderBy: [{ pinnedInProfileAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: 50,
-      include: { author: { select: { id: true, username: true } }, media: true },
+      include: { author: { select: publicUserSelect }, media: true },
     });
 
     const result = await Promise.all(
@@ -193,7 +205,7 @@ postsRouter.get('/favorites', requireAuth(), async (req, res) => {
       take: 50,
       include: {
         post: {
-          include: { author: { select: { id: true, username: true } }, media: true },
+          include: { author: { select: publicUserSelect }, media: true },
         },
       },
     });
@@ -232,7 +244,7 @@ postsRouter.get('/author/:authorId', async (req, res) => {
     const { authorId } = req.params;
     const author = await prisma.user.findUnique({
       where: { id: authorId },
-      select: { id: true, username: true },
+      select: publicUserWithBioSelect,
     });
     if (!author) return res.status(404).json({ error: 'user_not_found' });
 
@@ -240,7 +252,7 @@ postsRouter.get('/author/:authorId', async (req, res) => {
       where: { authorId },
       orderBy: [{ pinnedInProfileAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: 50,
-      include: { author: { select: { id: true, username: true } }, media: true },
+      include: { author: { select: publicUserSelect }, media: true },
     });
 
     const result = await Promise.all(
@@ -260,7 +272,7 @@ postsRouter.get('/author/:authorId', async (req, res) => {
       })
     );
 
-    return res.json({ user: author, posts: result });
+    return res.json({ user: serializePublicUser(author), posts: result });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: 'author_posts_failed' });
@@ -324,6 +336,66 @@ postsRouter.patch('/:postId/pin', requireAuth(), async (req, res) => {
   }
 });
 
+/**
+ * 帖子编辑：仅作者可改，发布后 3 天内可编辑，超期只读
+ * - 本期仅允许修改正文，不支持增删媒体（避免与 multer/磁盘清理耦合）
+ * - 不改 updatedAt 触发器：Prisma schema 已有 @updatedAt，Prisma 会自动刷新
+ */
+const POST_EDIT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+postsRouter.patch('/:postId', requireAuth(), async (req, res) => {
+  try {
+    const user = (req as unknown as { user?: { userId: string } }).user;
+    if (!user) return res.status(401).json({ error: 'unauthorized' });
+
+    const { postId } = req.params;
+    const content = String(req.body?.content ?? '').trim();
+    if (!content) return res.status(400).json({ error: 'missing_content' });
+
+    const existing = await prisma.post.findUnique({
+      where: { id: postId },
+      select: { id: true, authorId: true, createdAt: true },
+    });
+    if (!existing) return res.status(404).json({ error: 'post_not_found' });
+    if (existing.authorId !== user.userId) {
+      return res.status(403).json({ error: 'forbidden_not_author' });
+    }
+
+    const elapsed = Date.now() - existing.createdAt.getTime();
+    if (elapsed > POST_EDIT_WINDOW_MS) {
+      return res.status(403).json({ error: 'edit_window_expired' });
+    }
+
+    const updated = await prisma.post.update({
+      where: { id: postId },
+      data: { content },
+      include: {
+        author: { select: publicUserSelect },
+        media: true,
+      },
+    });
+
+    const [commentCount, likeCount, favoriteCount, shareCount] = await Promise.all([
+      prisma.comment.count({ where: { postId } }),
+      prisma.postLike.count({ where: { postId } }),
+      prisma.postFavorite.count({ where: { postId } }),
+      prisma.postShare.count({ where: { postId } }),
+    ]);
+
+    return res.json({
+      post: serializePost(updated, {
+        comments: commentCount,
+        likes: likeCount,
+        favorites: favoriteCount,
+        shares: shareCount,
+      }),
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'edit_post_failed' });
+  }
+});
+
 postsRouter.delete('/:postId', requireAuth(), async (req, res) => {
   try {
     const user = (req as unknown as { user?: { userId: string } }).user;
@@ -372,11 +444,11 @@ postsRouter.get('/:postId', async (req, res) => {
     const post = await prisma.post.findUnique({
       where: { id: postId },
       include: {
-        author: { select: { id: true, username: true } },
+        author: { select: publicUserSelect },
         media: true,
         comments: {
           orderBy: { createdAt: 'desc' },
-          include: { author: { select: { id: true, username: true } } },
+          include: { author: { select: publicUserSelect } },
         },
       },
     });
@@ -394,13 +466,13 @@ postsRouter.get('/:postId', async (req, res) => {
         id: post.id,
         content: post.content,
         createdAt: post.createdAt,
-        author: post.author,
+        author: serializePublicUser(post.author),
         media: post.media.map((m) => ({ id: m.id, kind: m.kind, url: `/${m.path}` })),
         comments: post.comments.map((c) => ({
           id: c.id,
           content: c.content,
           createdAt: c.createdAt,
-          author: c.author,
+          author: serializePublicUser(c.author),
           layerMainId: c.layerMainId,
         })),
         counts: { comments: commentCount, likes: likeCount, favorites: favoriteCount, shares: shareCount },

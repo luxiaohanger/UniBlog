@@ -5,6 +5,7 @@ import useSWR, { mutate as globalMutate } from 'swr';
 import { apiFetch } from '../../lib/http';
 import { getTokens } from '../../lib/token';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Avatar from '../../components/Avatar';
 import {
   clearUnread,
   getLastSeenMap,
@@ -17,16 +18,30 @@ import {
   subscribeUnreadChanged,
 } from '../../lib/unread';
 
-type Friend = { id: string; username: string; relationStatus: 'ACCEPTED' | 'DECLINED' };
+type Friend = {
+  id: string;
+  username: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  relationStatus: 'ACCEPTED' | 'DECLINED';
+};
 type FriendsRes = { friends: Friend[] };
 
-type MeRes = { user: { id: string; username: string; email: string } };
+type MeRes = {
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+  };
+};
 
 type PendingFriendRequest = {
   id: string;
   status: 'PENDING';
   createdAt: string;
-  sender: { id: string; username: string };
+  sender: { id: string; username: string; displayName?: string | null; avatarUrl?: string | null };
 };
 
 type ChatMessage = {
@@ -46,9 +61,10 @@ type NotificationsRes = {
       | 'post_liked'
       | 'post_favorited'
       | 'post_deleted_by_admin'
-      | 'comment_deleted_by_admin';
+      | 'comment_deleted_by_admin'
+      | 'report_resolved';
     createdAt: string;
-    actor: { id: string; username: string };
+    actor: { id: string; username: string; displayName?: string | null; avatarUrl?: string | null };
     post: { id: string; content: string };
     comment?: { id: string; content: string };
     targetComment?: { id: string; content: string } | null;
@@ -122,23 +138,13 @@ function FriendRow(props: {
           textAlign: 'left',
         }}
       >
-        <div
-          aria-hidden
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 999,
-            background: '#f1f5f9',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            color: '#334155',
-            flexShrink: 0,
-            position: 'relative',
-          }}
-        >
-          {f.username.slice(0, 1).toUpperCase()}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <Avatar
+            avatarUrl={f.id === 'system' ? null : f.avatarUrl}
+            username={f.username}
+            displayName={f.displayName}
+            size={34}
+          />
           {unread ? (
             <span
               aria-label="未读消息"
@@ -157,7 +163,7 @@ function FriendRow(props: {
         </div>
         <div style={{ minWidth: 0 }}>
           <div className="text-line-fit" style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
-            {f.username}
+            {f.displayName?.trim() || f.username}
             {pinned ? (
               <span style={{ marginLeft: 6, fontSize: 12, color: '#d97706' }}>
                 置顶
@@ -778,7 +784,7 @@ export default function FriendsPage() {
                 {activeTab === 'system'
                   ? '系统信息'
                   : activeFriend
-                    ? activeFriend.username
+                    ? activeFriend.displayName?.trim() || activeFriend.username
                     : '选择一个好友开始聊天'}
               </div>
               <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
@@ -895,7 +901,7 @@ export default function FriendsPage() {
                                     textAlign: 'left',
                                   }}
                                 >
-                                  {r.sender.username}
+                                  {r.sender.displayName?.trim() || r.sender.username}
                                 </button>
                                 <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
                                   {new Date(r.createdAt).toLocaleString()}
@@ -1007,7 +1013,7 @@ export default function FriendsPage() {
                             fontWeight: 700,
                           }}
                         >
-                          {it.actor.username}
+                          {it.actor.displayName?.trim() || it.actor.username}
                         </button>
                         {it.kind === 'post_liked' ? (
                           <> 给你的帖子 “{postLine}” 点赞了</>
@@ -1019,6 +1025,12 @@ export default function FriendsPage() {
                           <> 你的帖子 “{postLine}” 被管理员删除了</>
                         ) : it.kind === 'comment_deleted_by_admin' ? (
                           <> 你的评论 “{commentLine}” 被管理员删除了</>
+                        ) : it.kind === 'report_resolved' ? (
+                          it.comment?.id ? (
+                            <> 你的评论 “{commentLine}” 因举报通过审核被删除</>
+                          ) : (
+                            <> 你的帖子 “{postLine}” 因举报通过审核被删除</>
+                          )
                         ) : (
                           <> 回复了你的评论 “{commentLine}”</>
                         )}

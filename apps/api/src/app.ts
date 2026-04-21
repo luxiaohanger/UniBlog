@@ -6,6 +6,7 @@ import path from 'node:path';
 import { authRouter } from './routes/auth';
 import { postsRouter } from './routes/posts';
 import { socialRouter } from './routes/social';
+import { reportsRouter } from './routes/reports';
 
 export function createApp() {
   const app = express();
@@ -48,6 +49,8 @@ export function createApp() {
   app.use('/auth', authRouter);
   app.use('/posts', postsRouter);
   app.use('/social', socialRouter);
+  // 举报与管理员审核队列：整体挂到 /social；routes 内部提供 /reports + /admin/reports
+  app.use('/social', reportsRouter);
 
   // 兜底错误处理（MVP）
   app.use(

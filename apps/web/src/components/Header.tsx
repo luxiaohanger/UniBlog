@@ -17,6 +17,7 @@ import {
   setUnread,
   subscribeUnreadChanged,
 } from '../lib/unread';
+import Modal from './Modal';
 
 type Friend = { id: string; username: string; relationStatus: 'ACCEPTED' | 'DECLINED' };
 type FriendsRes = { friends: Friend[] };
@@ -76,17 +77,27 @@ export default function Header() {
     };
   }, [pathname]);
 
-  const { data } = useSWR<{ user: { id: string; email: string; username: string } }>(
+  const { data } = useSWR<{
+    user: { id: string; email: string; username: string; displayName?: string | null; role?: string };
+  }>(
     accessToken ? '/auth/me' : null,
-    () => apiFetch<{ user: { id: string; email: string; username: string } }>('/auth/me')
+    () =>
+      apiFetch<{
+        user: { id: string; email: string; username: string; displayName?: string | null; role?: string };
+      }>('/auth/me')
   );
+  const isAdmin = data?.user?.role === 'admin';
 
   useEffect(() => {
-    const u = data?.user?.username;
+    const u = data?.user?.displayName?.trim() || data?.user?.username;
     if (u) setStoredDisplayUsername(u);
-  }, [data?.user?.username]);
+  }, [data?.user?.displayName, data?.user?.username]);
 
-  const username = data?.user?.username ?? getStoredDisplayUsername() ?? undefined;
+  const username =
+    data?.user?.displayName?.trim() ||
+    data?.user?.username ||
+    getStoredDisplayUsername() ||
+    undefined;
   // 以 token 为准：已登录在 /auth/me 返回前不再误显示「登录/注册」
   const isAuthed = !!accessToken;
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -193,10 +204,21 @@ export default function Header() {
     if (href === '/circles') return pathname === '/circles' || pathname.startsWith('/circles/');
     if (href === '/write') return pathname === '/write';
     if (href.startsWith('/messages')) return pathname === '/messages' || pathname.startsWith('/messages/');
+    if (href === '/admin/reports') return pathname === '/admin/reports' || pathname.startsWith('/admin/');
     return pathname === href;
   };
 
+  // 管理员：轮询 open 举报数量用于红点提示
+  const adminReportsKey = isAdmin ? '/social/admin/reports?status=open&take=1__header' : null;
+  const { data: adminReportsData } = useSWR<{ reports: Array<{ id: string }> }>(
+    adminReportsKey,
+    () => apiFetch<{ reports: Array<{ id: string }> }>('/social/admin/reports?status=open&take=1'),
+    { refreshInterval: 5000, dedupingInterval: 2000, refreshWhenHidden: true }
+  );
+  const hasOpenReports = (adminReportsData?.reports?.length ?? 0) > 0;
+
   return (
+    <>
     <header
       className={`app-header${scrolled ? ' scrolled' : ''}`}
       style={{
@@ -279,6 +301,19 @@ export default function Header() {
                   {username ? `「${username}」的主页` : '「我」的主页'}
                 </span>
               </Link>
+              {isAdmin ? (
+                <Link
+                  href="/admin/reports"
+                  prefetch={false}
+                  className={`nav-link${isActive('/admin/reports') ? ' active' : ''}`}
+                  style={{ color: '#333', textDecoration: 'none' }}
+                >
+                  <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    管理
+                    <Dot show={hasOpenReports} />
+                  </span>
+                </Link>
+              ) : null}
               <Link
                 href="/write"
                 prefetch={false}
@@ -358,81 +393,49 @@ export default function Header() {
             <HeaderFriendUnreadWatcher key={friendId} friendId={friendId} accessToken={accessToken} />
           ))
         : null}
-      {showLogoutConfirm && (
-        <div
-          role="presentation"
-          onClick={() => setShowLogoutConfirm(false)}
-          className="modal-backdrop"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.5)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 16,
-            zIndex: 300,
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            className="modal-content"
+    </header>
+    <Modal
+      open={showLogoutConfirm}
+      onClose={() => setShowLogoutConfirm(false)}
+      title="确认退出登录？"
+      description="退出后将返回主界面。"
+      maxWidth={380}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={() => setShowLogoutConfirm(false)}
+            className="btn-secondary"
             style={{
-              background: '#fff',
-              borderRadius: 'var(--radius-lg)',
-              maxWidth: 380,
-              width: '100%',
-              padding: 28,
-              boxShadow: 'var(--shadow-xl)',
+              padding: '9px 18px',
+              borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--border)',
+              background: '#fff',
+              fontSize: 14,
+              fontWeight: 500,
             }}
           >
-            <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 8, color: 'var(--fg)' }}>
-              确认退出登录？
-            </div>
-            <div style={{ fontSize: 14, color: 'var(--fg-muted)', marginBottom: 24, lineHeight: 1.6 }}>
-              退出后将返回主界面。
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => setShowLogoutConfirm(false)}
-                className="btn-secondary"
-                style={{
-                  padding: '9px 18px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: '#fff',
-                  fontSize: 14,
-                  fontWeight: 500,
-                }}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="btn-danger"
-                style={{
-                  padding: '9px 18px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: 'var(--danger)',
-                  color: '#fff',
-                  fontSize: 14,
-                  fontWeight: 500,
-                }}
-              >
-                确认退出
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </header>
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="btn-danger"
+            style={{
+              padding: '9px 18px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: 'var(--danger)',
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 500,
+            }}
+          >
+            确认退出
+          </button>
+        </>
+      }
+    />
+    </>
   );
 }

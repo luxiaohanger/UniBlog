@@ -30,10 +30,15 @@ User ─┬─< Post ─┬─< PostMedia
 | --- | --- | --- | --- |
 | `id` | `cuid` | PK | |
 | `email` | `String` | `UNIQUE` | 登录标识 |
-| `username` | `String` | `UNIQUE` | 展示用户名 |
+| `username` | `String` | `UNIQUE` | 唯一用户名，注册后不可修改 |
 | `passwordHash` | `String` |  | bcrypt 10 轮 |
 | `role` | `String` | 默认 `"user"` | `user` / `admin` |
 | `createdAt` | `DateTime` | 默认 `now()` | |
+| `displayName` | `String?` | ≤ 40 字（业务层） | 展示名，为空时前端回退到 `username` |
+| `bio` | `String?` | ≤ 200 字（业务层） | 个人简介 |
+| `avatarPath` | `String?` |  | 头像相对路径，形如 `uploads/avatar-<ts>-<rand>.<ext>`；接口返回时序列化为 `avatarUrl: "/uploads/..."` |
+
+> API 层通过 `apps/api/src/lib/serializeUser.ts` 中的 `publicUserSelect` / `serializePublicUser` 统一输出「公开用户」结构 `{ id, username, displayName, avatarUrl }`，所有 `author` / `sender` / `receiver` / `actor` / `user` 字段都遵循这一结构。
 
 ### 3.2 `RefreshToken`
 
@@ -45,6 +50,26 @@ User ─┬─< Post ─┬─< PostMedia
 | FK `userId → User.id` | `ON DELETE CASCADE` | |
 
 索引：`userId`、`tokenHash`。
+
+### 3.2.1 `EmailVerification`
+
+用于注册 / 找回密码的邮箱验证码。不与 `User` 关联（注册时用户尚不存在，重置时以邮箱为准）。
+
+| 字段 | 说明 |
+| --- | --- |
+| `email` | 验证码针对的邮箱（存入前统一小写 + trim） |
+| `codeHash` | 6 位数字验证码的 `sha256`，原码不落库 |
+| `purpose` | `register` / `reset_password` |
+| `attempts` | 错误尝试次数，≥ 5 即整条作废 |
+| `expiresAt` | 过期时间（默认生成后 10 分钟） |
+| `consumedAt` | 消费时间；成功校验 / 被新码作废 / 错误超限 时写入 |
+
+索引：`(email, purpose, createdAt)`、`expiresAt`。
+
+业务约束：
+- 同 `(email, purpose)` 始终只有一条「活码」（`consumedAt IS NULL` 且未过期）；发新码前会把旧的置为已消费。
+- 发码冷却期 60 秒（业务层判断 `createdAt`），超限返回 `429 code_cooldown`。
+- 详细流程见 `apps/api/src/lib/verification.ts`。
 
 ### 3.3 `Post`
 
@@ -107,6 +132,30 @@ enum FriendshipStatus { PENDING ACCEPTED DECLINED }
 - `actorId` `SET NULL`：管理员账号删除后仍能保留通知（匿名）。
 - 索引：`(recipientId, createdAt)`、`postId`、`commentId`。
 
+### 3.10 `Report`
+
+```prisma
+enum ReportTargetType { post comment user }
+enum ReportStatus     { open resolved rejected }
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `reporterId` FK → `User.id`（`CASCADE`） | 举报人 |
+| `targetType` / `targetId` | 目标类型与对应 id（`post` → Post.id，`comment` → Comment.id，`user` → User.id） |
+| `targetUserId` FK → `User.id`（`SET NULL`） | 冗余存储：被举报的用户（帖子/评论的作者），便于按人聚合；用户删除时置空 |
+| `reason` | 举报原因文案，业务层约束 ≤ 200 字 |
+| `status` | 默认 `open`；管理员审核后切换为 `resolved`（通过 = 目标被处理）或 `rejected`（驳回） |
+| `reviewerId` FK → `User.id`（`SET NULL`） | 审核人（管理员） |
+| `reviewerNote` | 审核留言（可空） |
+| `reviewedAt` | 审核时间 |
+
+索引：`(status, createdAt)` / `(targetType, targetId)` / `(reporterId, createdAt)` / `(targetUserId, status)`。
+
+业务约束（应用层）：
+- 同一举报人对同一 `(targetType, targetId)` 只允许存在一条 `status=open` 的举报；二次提交会被 `409 already_reported` 拒绝。
+- 管理员审核 `resolved` 会联动调用删帖（`targetType=post`）或删单条评论（`targetType=comment`）的逻辑，并写入 `SystemNotification.kind = report_resolved`（被处理者接收）。
+
 ## 4. 级联与一致性
 
 | 父表 | 子表 | 行为 |
@@ -142,6 +191,9 @@ enum FriendshipStatus { PENDING ACCEPTED DECLINED }
 | `20260327124105` / `20260327124608_111` | 辅助迁移（媒体/索引） |
 | `20260327153000_add_post_pinning` | 新增置顶字段 |
 | `20260327190000_add_system_notifications` | 新增系统通知表 |
+| `20260421124503_add_email_verification` | 新增邮箱验证码表（注册 / 找回密码） |
+| `20260421132650_add_user_profile` | 新增 `User.displayName` / `User.bio` / `User.avatarPath` |
+| `20260421134003_add_report` | 新增 `Report` 表与 `ReportTargetType` / `ReportStatus` 枚举 |
 
 ## 6. 规范
 

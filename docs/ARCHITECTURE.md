@@ -88,7 +88,7 @@ src/app/
 ├── user/[userId]/        # 他人主页
 ├── me/                   # 我的主页（layout + favorites）
 │   └── favorites/        # 我的收藏
-└── posts/[id]/           # 帖子详情（预留）
+└── admin/reports/        # 管理员举报审核队列
 ```
 
 ### 4.2 关键约定

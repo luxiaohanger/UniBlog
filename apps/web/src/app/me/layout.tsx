@@ -4,6 +4,16 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/http';
 import { getTokens } from '../../lib/token';
+import Avatar from '../../components/Avatar';
+
+type MeUser = {
+  id: string;
+  username: string;
+  email: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  bio?: string | null;
+};
 
 /**
  * 个人主页：侧栏 + 个人信息常驻（避免子页切换时整块被「加载中」替换导致闪烁）
@@ -12,12 +22,14 @@ import { getTokens } from '../../lib/token';
 export default function MeLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<{ username: string; email: string } | null>(null);
+  const [user, setUser] = useState<MeUser | null>(null);
   const [userLoading, setUserLoading] = useState(true);
 
   const isPosts = pathname === '/me' || pathname === '/me/';
   const isFavorites =
     pathname === '/me/favorites' || pathname === '/me/favorites/';
+  const isSettings =
+    pathname === '/me/settings' || pathname === '/me/settings/';
 
   useEffect(() => {
     if (!getTokens()) {
@@ -25,7 +37,7 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
       return;
     }
     let cancelled = false;
-    apiFetch<{ user: { username: string; email: string } }>('/auth/me')
+    apiFetch<{ user: MeUser }>('/auth/me')
       .then((d) => {
         if (!cancelled) setUser(d.user);
       })
@@ -36,7 +48,7 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname]);
 
   const navBtnStyle = (active: boolean): CSSProperties => ({
     padding: '10px 14px',
@@ -93,6 +105,14 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
             <span aria-hidden style={{ fontSize: 16 }}>⭐</span>
             <span>我的收藏</span>
           </button>
+          <button
+            type="button"
+            style={navBtnStyle(isSettings)}
+            onClick={() => router.push('/me/settings')}
+          >
+            <span aria-hidden style={{ fontSize: 16 }}>⚙️</span>
+            <span>资料设置</span>
+          </button>
         </nav>
       </aside>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -142,34 +162,34 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
                 pointerEvents: 'none',
               }}
             />
-            <div
-              aria-hidden
-              style={{
-                width: 56,
-                height: 56,
-                flexShrink: 0,
-                borderRadius: '50%',
-                background: 'var(--brand-gradient)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontSize: 22,
-                fontWeight: 700,
-                letterSpacing: '-0.02em',
-                boxShadow: 'var(--shadow-brand)',
-                position: 'relative',
-              }}
-            >
-              {user.username?.charAt(0)?.toUpperCase() ?? 'U'}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, position: 'relative' }}>
+            <Avatar
+              avatarUrl={user.avatarUrl}
+              username={user.username}
+              displayName={user.displayName}
+              size={56}
+              fontSize={22}
+              style={{ boxShadow: 'var(--shadow-brand)', position: 'relative' }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, position: 'relative', flex: 1 }}>
               <div className="text-line-fit" style={{ fontWeight: 600, fontSize: 17, color: 'var(--fg)', letterSpacing: '-0.01em' }}>
-                {user.username}
+                {user.displayName?.trim() || user.username}
               </div>
               <div className="text-line-fit" style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
-                {user.email}
+                @{user.username} · {user.email}
               </div>
+              {user.bio ? (
+                <div
+                  style={{
+                    color: 'var(--fg-secondary)',
+                    fontSize: 13,
+                    marginTop: 4,
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {user.bio}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

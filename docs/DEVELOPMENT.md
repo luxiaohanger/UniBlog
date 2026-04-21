@@ -58,7 +58,15 @@ npm run dev:up
 | `JWT_ACCESS_EXPIRES_IN` | `24h` | 例：`15m` / `2h` / `7d` |
 | `JWT_REFRESH_EXPIRES_DAYS` | `30` | Refresh Token 过期天数 |
 | `CORS_ORIGIN` | 空 | 逗号分隔；空则开发默认放行 `localhost:*` |
+| `SMTP_HOST` | `smtp.qq.com` | SMTP 服务器地址 |
+| `SMTP_PORT` | `465` | SMTP 端口 |
+| `SMTP_SECURE` | `true` | `true` 走 TLS（465），`false` 走 STARTTLS（587） |
+| `SMTP_USER` | 空 | 发件邮箱账号；未填则 `/auth/email/send-code` 返回 `mailer_not_configured` |
+| `SMTP_PASS` | 空 | 发件邮箱的「授权码」（QQ/163 需要在邮箱设置里开通 SMTP 并获取） |
+| `SMTP_FROM` | 空 | 发件人展示，例如 `UniBlog <foo@qq.com>`；为空则自动拼 `UniBlog <${SMTP_USER}>` |
 | `PRISMA_LOG` | 空 | 任意非空值开启 `query + error` 日志 |
+
+> **QQ 邮箱配置提示**：登录 QQ 邮箱 → 设置 → 账号 → 「POP3/SMTP 服务」开启并获取授权码；`SMTP_PASS` 填授权码而非 QQ 登录密码。163 邮箱同理。
 
 ### 前端（Next.js 编译期）
 

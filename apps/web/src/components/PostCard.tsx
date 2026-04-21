@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState, useLayoutEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { apiFetch } from '../lib/http';
 import { getTokens } from '../lib/token';
 import { buildCommentTree } from '../lib/commentTree';
 import { parseReplyDisplay } from '../lib/replyDisplay';
 import { UserProfileLink, AtUserLink } from './UserProfileLink';
+import Avatar from './Avatar';
+import ReportButton from './ReportButton';
+import Modal from './Modal';
 
 type CommentBlock = {
   mainComments: any[];
@@ -33,6 +37,8 @@ function findMainIdForComment(cb: CommentBlock, targetCommentId: string): string
 interface Author {
   id: string;
   username: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
 }
 
 interface Media {
@@ -98,6 +104,7 @@ export default function PostCard({
   allowAdminDelete = true,
   focusCommentId = null,
 }: PostCardProps) {
+  const router = useRouter();
   const isSubmitShortcut = (
     e: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -117,6 +124,14 @@ export default function PostCard({
   const canDeletePost = isOwnPost || canAdminDeleteHere;
   const canPin =
     (pinScope === 'profile' && isOwnPost) || (pinScope === 'feed' && isAdmin);
+  // 作者在发帖后 3 天内可编辑正文；超期只读
+  const POST_EDIT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+  const postAgeMs = Date.now() - new Date(post.createdAt).getTime();
+  const canEditPost = isOwnPost && postAgeMs <= POST_EDIT_WINDOW_MS;
+  // 已登录的非作者用户可举报该帖
+  const canReportPost = !!accessToken && !isOwnPost;
+  // 仅当存在任一作者/管理员级操作时才显示「⋮」菜单按钮
+  const hasActionMenu = canPin || canDeletePost || canEditPost || canReportPost;
 
   const [expandedComments, setExpandedComments] = useState(false);
   const [commentBlock, setCommentBlock] = useState<CommentBlock | null>(null);
@@ -137,6 +152,11 @@ export default function PostCard({
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [pinning, setPinning] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  // 内联编辑态
+  const [editingPost, setEditingPost] = useState(false);
+  const [editingContent, setEditingContent] = useState(post.content);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!focusCommentId) return;
@@ -239,16 +259,30 @@ export default function PostCard({
     }
   };
 
-  /** 评论图标仅负责展开；收起用底部「收起所有评论」 */
+  /** 点击评论图标：未展开则拉取并展开，已展开则折叠 */
   const handleOpenComments = () => {
-    if (!expandedComments) {
-      fetchPostDetails();
+    if (expandedComments) {
+      setExpandedComments(false);
+      return;
     }
+    if (commentBlock) {
+      setExpandedComments(true);
+      return;
+    }
+    fetchPostDetails();
+  };
+
+  /** 未登录用户触发互动时统一跳转登录页 */
+  const requireLoginOrRedirect = () => {
+    if (accessToken) return true;
+    router.push('/login');
+    return false;
   };
 
   const handleCommentSubmit = async () => {
     const content = commentInput;
     if (!content?.trim()) return;
+    if (!requireLoginOrRedirect()) return;
 
     try {
       const data = await apiFetch<any>(`/social/posts/${post.id}/comments`, {
@@ -269,6 +303,7 @@ export default function PostCard({
   const handleReply = async (commentId: string) => {
     const content = replyInputs[commentId];
     if (!content?.trim()) return;
+    if (!requireLoginOrRedirect()) return;
 
     const prev = commentBlock;
     const targetComment =
@@ -315,6 +350,7 @@ export default function PostCard({
   };
 
   const handleLike = async () => {
+    if (!requireLoginOrRedirect()) return;
     try {
       if (postState.liked) {
         await apiFetch(`/social/posts/${post.id}/likes`, { method: 'DELETE' });
@@ -341,6 +377,7 @@ export default function PostCard({
   };
 
   const handleFavorite = async () => {
+    if (!requireLoginOrRedirect()) return;
     try {
       if (postState.favorited) {
         await apiFetch(`/social/posts/${post.id}/favorites`, {
@@ -381,6 +418,55 @@ export default function PostCard({
       alert('删除失败，请重试');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleStartEdit = () => {
+    setShowActionMenu(false);
+    setEditError(null);
+    setEditingContent(post.content);
+    setEditingPost(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPost(false);
+    setEditingContent(post.content);
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    const next = editingContent.trim();
+    if (!next) {
+      setEditError('帖子内容不能为空');
+      return;
+    }
+    if (next === post.content.trim()) {
+      setEditingPost(false);
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const data = await apiFetch<{ post: Post }>(`/posts/${post.id}`, {
+        method: 'PATCH',
+        body: { content: next },
+      });
+      // 接口返回完整序列化后的帖子：仅回填正文以避免覆盖 isPinned 等 scope 相关字段
+      onUpdatePost({ ...post, content: data.post.content });
+      setEditingPost(false);
+    } catch (err: unknown) {
+      const msg = String((err as { message?: unknown } | null)?.message ?? '');
+      if (msg.includes('edit_window_expired')) {
+        setEditError('发布超过 3 天的帖子已不可再编辑');
+      } else if (msg.includes('forbidden_not_author')) {
+        setEditError('仅作者可编辑该帖子');
+      } else if (msg.includes('missing_content')) {
+        setEditError('帖子内容不能为空');
+      } else {
+        setEditError('保存失败，请稍后重试');
+      }
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -473,9 +559,20 @@ export default function PostCard({
           gap: 8,
         }}
       >
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 12, flex: 1 }}>
+          <Avatar
+            avatarUrl={post.author.avatarUrl}
+            username={post.author.username}
+            displayName={post.author.displayName}
+            size={40}
+          />
+          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <UserProfileLink userId={post.author.id} username={post.author.username} />
+            <UserProfileLink
+              userId={post.author.id}
+              username={post.author.username}
+              displayName={post.author.displayName}
+            />
             {post.isPinned && (
               <span
                 style={{
@@ -493,11 +590,21 @@ export default function PostCard({
               </span>
             )}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>
-            {new Date(post.createdAt).toLocaleString()}
+          <div
+            style={{
+              fontSize: 12,
+              color: 'var(--fg-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>{new Date(post.createdAt).toLocaleString()}</span>
+          </div>
           </div>
         </div>
-        {canPin ? (
+        {hasActionMenu && (
           <div style={{ position: 'relative' }}>
             <button
               type="button"
@@ -534,23 +641,42 @@ export default function PostCard({
                   padding: 4,
                 }}
               >
-                <button
-                  type="button"
-                  disabled={pinning}
-                  onClick={handleTogglePin}
-                  className="btn-ghost"
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '10px 12px',
-                    borderRadius: 'var(--radius-xs)',
-                    border: 'none',
-                    fontSize: '14px',
-                    cursor: pinning ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {post.isPinned ? '取消置顶' : '置顶'}
-                </button>
+                {canEditPost && (
+                  <button
+                    type="button"
+                    onClick={handleStartEdit}
+                    className="btn-ghost"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-xs)',
+                      border: 'none',
+                      fontSize: '14px',
+                    }}
+                  >
+                    编辑
+                  </button>
+                )}
+                {canPin && (
+                  <button
+                    type="button"
+                    disabled={pinning}
+                    onClick={handleTogglePin}
+                    className="btn-ghost"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-xs)',
+                      border: 'none',
+                      fontSize: '14px',
+                      cursor: pinning ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {post.isPinned ? '取消置顶' : '置顶'}
+                  </button>
+                )}
                 {canDeletePost && (
                   <button
                     type="button"
@@ -572,62 +698,148 @@ export default function PostCard({
                     {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
                   </button>
                 )}
+                {canReportPost && (
+                  <div
+                    style={{
+                      padding: '4px 12px',
+                      borderTop: canEditPost || canPin || canDeletePost ? '1px solid var(--border)' : undefined,
+                      marginTop: canEditPost || canPin || canDeletePost ? 4 : 0,
+                    }}
+                  >
+                    <ReportButton
+                      targetType="post"
+                      targetId={post.id}
+                      label="举报"
+                      variant="link"
+                      onReported={() => setShowActionMenu(false)}
+                      style={{ width: '100%', padding: '6px 0' }}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
-        ) : (
-          canDeletePost && (
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="btn-ghost"
-              style={{
-                fontSize: '13px',
-                color: 'var(--fg-muted)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-pill)',
-                padding: '4px 12px',
-              }}
-            >
-              {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
-            </button>
-          )
         )}
       </div>
 
-      <p
-        className="text-line-fit"
-        style={{
-          marginBottom: '8px',
-          whiteSpace: 'pre-wrap',
-          overflow: lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? 'hidden' : 'visible',
-          display:
-            lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? '-webkit-box' : 'block',
-          WebkitLineClamp:
-            lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? PREVIEW_LINES : 'unset',
-          WebkitBoxOrient:
-            lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? 'vertical' : 'unset',
-        }}
-      >
-        {post.content}
-      </p>
-      {lineCount(post.content) > PREVIEW_LINES && (
+      {editingPost ? (
         <div style={{ marginBottom: '12px' }}>
-          <button
-            type="button"
-            onClick={() => setExpandedPostText((v) => !v)}
+          <textarea
+            className="text-line-fit"
+            value={editingContent}
+            onChange={(e) => setEditingContent(e.target.value)}
+            rows={Math.min(12, Math.max(4, lineCount(editingContent)))}
             style={{
-              background: 'none',
-              border: 'none',
-              color: '#0070f3',
-              cursor: 'pointer',
-              padding: 0,
-              fontSize: '13px',
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+              fontSize: '14px',
+              lineHeight: 1.6,
+              resize: 'vertical',
+              fontFamily: 'inherit',
+            }}
+            onKeyDown={(e) => {
+              if (isSubmitShortcut(e)) {
+                e.preventDefault();
+                handleSaveEdit();
+              } else if (e.key === 'Escape') {
+                handleCancelEdit();
+              }
+            }}
+          />
+          {editError && (
+            <div style={{ color: 'var(--danger, #c0392b)', fontSize: 13, marginTop: 6 }}>
+              {editError}
+            </div>
+          )}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 10,
+              flexWrap: 'wrap',
             }}
           >
-            {expandedPostText ? '收起此帖子' : '展开此帖子'}
-          </button>
+            <span style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>
+              仅支持编辑发布后 3 天内的帖子正文；Ctrl/Cmd + Enter 保存，Esc 取消
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                disabled={savingEdit}
+                className="btn-secondary"
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-pill)',
+                  border: '1px solid var(--border)',
+                  background: '#fff',
+                  fontSize: 13,
+                  cursor: savingEdit ? 'not-allowed' : 'pointer',
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={savingEdit}
+                className="btn-primary"
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-pill)',
+                  border: 'none',
+                  background: '#0070f3',
+                  color: '#fff',
+                  fontSize: 13,
+                  cursor: savingEdit ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {savingEdit ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
         </div>
+      ) : (
+        <>
+          <p
+            className="text-line-fit"
+            style={{
+              marginBottom: '8px',
+              whiteSpace: 'pre-wrap',
+              overflow: lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? 'hidden' : 'visible',
+              display:
+                lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? '-webkit-box' : 'block',
+              WebkitLineClamp:
+                lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? PREVIEW_LINES : 'unset',
+              WebkitBoxOrient:
+                lineCount(post.content) > PREVIEW_LINES && !expandedPostText ? 'vertical' : 'unset',
+            }}
+          >
+            {post.content}
+          </p>
+          {lineCount(post.content) > PREVIEW_LINES && (
+            <div style={{ marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setExpandedPostText((v) => !v)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#0070f3',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '13px',
+                }}
+              >
+                {expandedPostText ? '收起此帖子' : '展开此帖子'}
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {post.media.length > 0 && (() => {
@@ -728,6 +940,7 @@ export default function PostCard({
         commentBlock &&
         hasCommentList && (
           <div
+            id={`postcard-comments-${post.id}`}
             style={{
               marginBottom: '16px',
               paddingTop: '12px',
@@ -788,9 +1001,16 @@ export default function PostCard({
                             minWidth: 0,
                           }}
                         >
+                          <Avatar
+                            avatarUrl={mainComment.author.avatarUrl}
+                            username={mainComment.author.username}
+                            displayName={mainComment.author.displayName}
+                            size={28}
+                          />
                           <UserProfileLink
                             userId={mainComment.author.id}
                             username={mainComment.author.username}
+                            displayName={mainComment.author.displayName}
                             style={{ fontSize: '14px' }}
                           />
                           <span style={{ fontSize: '12px', color: '#999' }}>
@@ -880,6 +1100,13 @@ export default function PostCard({
                           >
                             删除
                           </button>
+                        )}
+                        {!!accessToken && mainComment.author.id !== meData?.user?.id && (
+                          <ReportButton
+                            targetType="comment"
+                            targetId={mainComment.id}
+                            variant="inline"
+                          />
                         )}
                         {layerReplies.length > 0 && (
                           <button
@@ -1018,9 +1245,16 @@ export default function PostCard({
                                       minWidth: 0,
                                     }}
                                   >
+                                    <Avatar
+                                      avatarUrl={replyComment.author.avatarUrl}
+                                      username={replyComment.author.username}
+                                      displayName={replyComment.author.displayName}
+                                      size={24}
+                                    />
                                     <UserProfileLink
                                       userId={replyComment.author.id}
                                       username={replyComment.author.username}
+                                      displayName={replyComment.author.displayName}
                                       style={{ fontSize: '14px' }}
                                     />
                                     {mention &&
@@ -1138,6 +1372,13 @@ export default function PostCard({
                                     >
                                       删除
                                     </button>
+                                  )}
+                                  {!!accessToken && replyComment.author.id !== meData?.user?.id && (
+                                    <ReportButton
+                                      targetType="comment"
+                                      targetId={replyComment.id}
+                                      variant="inline"
+                                    />
                                   )}
                                 </div>
                                 {replyingTo?.commentId === replyComment.id && (
@@ -1346,85 +1587,56 @@ export default function PostCard({
         </button>
       </div>
 
-      {showDeleteConfirm && (
-        <div
-          className="modal-backdrop"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.5)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            zIndex: 200,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px',
-          }}
-          role="presentation"
-          onClick={() => !deleting && setShowDeleteConfirm(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="modal-content"
-            style={{
-              background: 'white',
-              borderRadius: 'var(--radius-lg)',
-              padding: '28px',
-              maxWidth: 380,
-              width: '100%',
-              boxShadow: 'var(--shadow-xl)',
-              border: '1px solid var(--border)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p style={{ fontSize: 17, marginBottom: 8, fontWeight: 600, color: 'var(--fg)' }}>
-              删除帖子？
-            </p>
-            <p style={{ fontSize: 14, color: 'var(--fg-muted)', marginBottom: 24, lineHeight: 1.6 }}>
-              删除后无法恢复，确定要删除这条帖子吗？
-            </p>
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => setShowDeleteConfirm(false)}
-                className="btn-secondary"
-                style={{
-                  padding: '9px 18px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: 'white',
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={handleConfirmDelete}
-                className="btn-danger"
-                style={{
-                  padding: '9px 18px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: 'var(--danger)',
-                  color: 'white',
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {deleting ? '删除中…' : '确认删除'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={showDeleteConfirm}
+        onClose={() => {
+          if (!deleting) setShowDeleteConfirm(false);
+        }}
+        title="删除帖子？"
+        description="删除后无法恢复，确定要删除这条帖子吗？"
+        maxWidth={380}
+        closeOnBackdrop={!deleting}
+        footer={
+          <>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => setShowDeleteConfirm(false)}
+              className="btn-secondary"
+              style={{
+                padding: '9px 18px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'white',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: deleting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={handleConfirmDelete}
+              className="btn-danger"
+              style={{
+                padding: '9px 18px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: 'var(--danger)',
+                color: 'white',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: deleting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {deleting ? '删除中…' : '确认删除'}
+            </button>
+          </>
+        }
+      />
+
       {previewImageUrl && (
         <div
           role="presentation"

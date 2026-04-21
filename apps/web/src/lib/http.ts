@@ -20,10 +20,13 @@ export async function apiFetch<T>(
   const url = `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
   const method = options?.method || 'GET';
 
-  // 仅登录、注册不带 Bearer；/auth/me 等需携带 token
+  // 登录、注册、发验证码、重置密码均为游客场景，不带 Bearer；/auth/me 等需携带 token
   const pathWithoutQuery = path.split('?')[0];
   const authPathNoBearer =
-    pathWithoutQuery === '/auth/login' || pathWithoutQuery === '/auth/register';
+    pathWithoutQuery === '/auth/login' ||
+    pathWithoutQuery === '/auth/register' ||
+    pathWithoutQuery === '/auth/email/send-code' ||
+    pathWithoutQuery === '/auth/password/reset';
 
   const headers: Record<string, string> = {
     ...(options?.headers || {}),
