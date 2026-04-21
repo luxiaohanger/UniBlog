@@ -56,8 +56,13 @@ type NotificationsRes = {
   }>;
 };
 
-const PINNED_KEY = 'friends_pinned_ids';
-const HIDDEN_KEY = 'friends_hidden_ids';
+// 消息页里对"联系人侧栏"的本地偏好：置顶 / 隐藏会话
+// 采用新 key 名以对齐页面语义；读取时兼容旧 'friends_*' key，迁移到新 key 即可，
+// 从而不丢失既有用户的置顶/隐藏状态。
+const PINNED_KEY = 'messages_pinned_ids';
+const HIDDEN_KEY = 'messages_hidden_ids';
+const LEGACY_PINNED_KEY = 'friends_pinned_ids';
+const LEGACY_HIDDEN_KEY = 'friends_hidden_ids';
 
 function compareISO(a: string, b: string) {
   // ISO 字符串按字典序即可比较时间先后（同一时区格式）
@@ -151,7 +156,7 @@ function FriendRow(props: {
           ) : null}
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
+          <div className="text-line-fit" style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
             {f.username}
             {pinned ? (
               <span style={{ marginLeft: 6, fontSize: 12, color: '#d97706' }}>
@@ -271,10 +276,19 @@ export default function FriendsPage() {
     return subscribeUnreadChanged(() => setUnreadVersion((v) => v + 1));
   }, []);
 
+  // 读本地偏好；新 key 优先，缺失则回落旧 'friends_*' key 并迁移到新 key
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const raw = window.localStorage.getItem(PINNED_KEY);
+      let raw = window.localStorage.getItem(PINNED_KEY);
+      if (!raw) {
+        const legacy = window.localStorage.getItem(LEGACY_PINNED_KEY);
+        if (legacy) {
+          window.localStorage.setItem(PINNED_KEY, legacy);
+          window.localStorage.removeItem(LEGACY_PINNED_KEY);
+          raw = legacy;
+        }
+      }
       if (!raw) return;
       const ids = JSON.parse(raw) as unknown;
       if (Array.isArray(ids) && ids.every((x) => typeof x === 'string')) setPinnedIds(ids);
@@ -286,7 +300,15 @@ export default function FriendsPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const raw = window.localStorage.getItem(HIDDEN_KEY);
+      let raw = window.localStorage.getItem(HIDDEN_KEY);
+      if (!raw) {
+        const legacy = window.localStorage.getItem(LEGACY_HIDDEN_KEY);
+        if (legacy) {
+          window.localStorage.setItem(HIDDEN_KEY, legacy);
+          window.localStorage.removeItem(LEGACY_HIDDEN_KEY);
+          raw = legacy;
+        }
+      }
       if (!raw) return;
       const ids = JSON.parse(raw) as unknown;
       if (Array.isArray(ids) && ids.every((x) => typeof x === 'string')) setHiddenIds(ids);
@@ -527,6 +549,7 @@ export default function FriendsPage() {
 
   return (
     <div
+      className="messages-shell"
       style={{
         display: 'flex',
         gap: 16,
@@ -536,6 +559,7 @@ export default function FriendsPage() {
     >
       {/* Sidebar */}
       <aside
+        className="messages-sidebar"
         style={{
           width: 260,
           flexShrink: 0,
@@ -711,8 +735,9 @@ export default function FriendsPage() {
         </div>
       </aside>
 
-      {/* ChatWindow */}
+      {/* ChatWindow —— 对齐全站页面切换模式：侧栏静态，聊天板块从下方上滑浮现 */}
       <section
+        className="slide-up-enter"
         style={{
           flex: 1,
           minWidth: 0,
@@ -721,6 +746,7 @@ export default function FriendsPage() {
         }}
       >
         <div
+          className="messages-main-inner"
           style={{
             flex: 1,
             minWidth: 360,
@@ -748,7 +774,7 @@ export default function FriendsPage() {
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>
+              <div className="text-line-fit" style={{ fontSize: 16, fontWeight: 800 }}>
                 {activeTab === 'system'
                   ? '系统信息'
                   : activeFriend
@@ -857,6 +883,7 @@ export default function FriendsPage() {
                                 <button
                                   type="button"
                                   onClick={() => router.push(`/user/${encodeURIComponent(r.sender.id)}`)}
+                                  className="text-line-fit"
                                   style={{
                                     border: 'none',
                                     background: 'transparent',
@@ -963,7 +990,7 @@ export default function FriendsPage() {
                         borderColor: isUnread ? '#bfdbfe' : '#e5e7eb',
                       }}
                     >
-                      <div style={{ fontSize: 13, color: '#334155', marginTop: 2, whiteSpace: 'pre-wrap' }}>
+                      <div className="text-line-fit" style={{ fontSize: 13, color: '#334155', marginTop: 2, whiteSpace: 'pre-wrap' }}>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1090,8 +1117,8 @@ export default function FriendsPage() {
                     }}
                   >
                     <div
+                      className="text-line-fit"
                       style={{
-                        maxWidth: '74%',
                         background: isMine ? '#0070f3' : '#fff',
                         color: isMine ? '#fff' : '#111827',
                         border: isMine ? 'none' : '1px solid #e5e7eb',
@@ -1134,6 +1161,7 @@ export default function FriendsPage() {
               }}
             >
               <textarea
+                className="text-line-fit"
                 rows={2}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}

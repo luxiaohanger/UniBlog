@@ -39,54 +39,59 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   const navBtnStyle = (active: boolean): CSSProperties => ({
-    padding: '8px 12px',
-    borderRadius: '8px',
+    padding: '10px 14px',
+    borderRadius: 'var(--radius-sm)',
     textDecoration: 'none',
-    color: '#333',
-    display: 'block',
+    color: active ? 'var(--brand-500)' : 'var(--fg-secondary)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
     width: '100%',
     textAlign: 'left' as const,
     border: 'none',
     cursor: 'pointer',
-    fontSize: 'inherit',
+    fontSize: 14,
     fontFamily: 'inherit',
-    background: active ? '#f0f0f0' : 'transparent',
+    background: active ? 'var(--brand-soft)' : 'transparent',
     // 固定字重，避免切换时字形宽度变化导致“字符抖动”
-    fontWeight: 600,
-    opacity: active ? 1 : 0.78,
-    transition: 'background 0.2s ease, opacity 0.15s ease',
+    fontWeight: 500,
+    transition:
+      'background-color var(--dur-base) var(--ease-standard), color var(--dur-base) var(--ease-standard)',
   });
 
   return (
-    <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+    <div className="me-shell" style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
       <aside
+        className="me-sidebar card"
         style={{
-          width: 200,
+          width: 220,
           flexShrink: 0,
-          background: 'white',
-          borderRadius: '12px',
-          padding: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          padding: 16,
+          borderRadius: 'var(--radius-lg)',
           position: 'sticky',
-          top: 72,
+          top: 80,
           zIndex: 2,
         }}
       >
-        <h2 style={{ fontSize: '18px', marginBottom: '16px' }}>个人中心</h2>
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <h2 style={{ fontSize: 13, marginBottom: 12, color: 'var(--fg-subtle)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          个人中心
+        </h2>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <button
             type="button"
             style={navBtnStyle(isPosts)}
             onClick={() => router.push('/me')}
           >
-            我的帖子
+            <span aria-hidden style={{ fontSize: 16 }}>📝</span>
+            <span>我的帖子</span>
           </button>
           <button
             type="button"
             style={navBtnStyle(isFavorites)}
             onClick={() => router.push('/me/favorites')}
           >
-            我的收藏
+            <span aria-hidden style={{ fontSize: 16 }}>⭐</span>
+            <span>我的收藏</span>
           </button>
         </nav>
       </aside>
@@ -94,35 +99,76 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
         {/* 个人信息不因子页 loading 卸载，避免切换时文字闪没 */}
         {userLoading ? (
           <div
+            className="card"
             style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '24px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              color: '#999',
-              fontSize: '14px',
+              padding: 20,
+              marginBottom: 24,
+              borderRadius: 'var(--radius-lg)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
             }}
           >
-            加载个人信息…
+            <div className="skeleton" style={{ width: 56, height: 56, borderRadius: '50%' }} />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="skeleton" style={{ width: '30%', height: 16 }} />
+              <div className="skeleton" style={{ width: '55%', height: 12 }} />
+            </div>
           </div>
         ) : user ? (
           <div
+            className="card card-hover"
             style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '24px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              padding: 20,
+              marginBottom: 24,
+              borderRadius: 'var(--radius-lg)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 18,
+              position: 'relative',
+              overflow: 'hidden',
             }}
           >
-            <h2 style={{ fontSize: '18px', marginBottom: '12px' }}>个人信息</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div>
-                <strong>用户名:</strong> {user.username}
+            {/* 品牌色背景光晕 */}
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                top: -80,
+                right: -80,
+                width: 220,
+                height: 220,
+                background: 'radial-gradient(closest-side, rgba(107,92,255,0.14), transparent 70%)',
+                pointerEvents: 'none',
+              }}
+            />
+            <div
+              aria-hidden
+              style={{
+                width: 56,
+                height: 56,
+                flexShrink: 0,
+                borderRadius: '50%',
+                background: 'var(--brand-gradient)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontSize: 22,
+                fontWeight: 700,
+                letterSpacing: '-0.02em',
+                boxShadow: 'var(--shadow-brand)',
+                position: 'relative',
+              }}
+            >
+              {user.username?.charAt(0)?.toUpperCase() ?? 'U'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, position: 'relative' }}>
+              <div className="text-line-fit" style={{ fontWeight: 600, fontSize: 17, color: 'var(--fg)', letterSpacing: '-0.01em' }}>
+                {user.username}
               </div>
-              <div>
-                <strong>邮箱:</strong> {user.email}
+              <div className="text-line-fit" style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+                {user.email}
               </div>
             </div>
           </div>

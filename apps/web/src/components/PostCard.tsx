@@ -18,7 +18,11 @@ type CommentBlock = {
 function findMainIdForComment(cb: CommentBlock, targetCommentId: string): string | null {
   const all = [...cb.mainComments, ...cb.replyComments];
   const target = all.find((m: any) => m.id === targetCommentId);
-  if (target?.layerMainId) return target.layerMainId as string;
+  // 权威关系：先用 layerMainId，但必须确认它指向当前视图中的一个真实层主，避免悬空 id
+  if (target?.layerMainId) {
+    const mainId = String(target.layerMainId);
+    if (cb.mainComments.some((m: any) => m.id === mainId)) return mainId;
+  }
   if (cb.mainComments.some((m: any) => m.id === targetCommentId)) return targetCommentId;
   const layer = cb.layers[targetCommentId];
   if (layer == null) return null;
@@ -453,29 +457,43 @@ export default function PostCard({
   return (
     <div
       id={`postcard-${post.id}`}
+      className="card card-hover"
       style={{
-        background: 'white',
-        borderRadius: '12px',
-        padding: '16px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        padding: '20px',
+        borderRadius: 'var(--radius-lg)',
       }}
     >
       <div
+        className="flex-wrap-sm"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
           marginBottom: '12px',
+          gap: 8,
         }}
       >
-        <div>
-          <UserProfileLink userId={post.author.id} username={post.author.username} />
-          {post.isPinned && (
-            <div style={{ fontSize: '12px', color: '#d97706', marginTop: '4px' }}>
-              📌 置顶帖子
-            </div>
-          )}
-          <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <UserProfileLink userId={post.author.id} username={post.author.username} />
+            {post.isPinned && (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: '#b45309',
+                  background: 'rgba(217, 119, 6, 0.12)',
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  fontWeight: 500,
+                  letterSpacing: '0.02em',
+                  lineHeight: 1.4,
+                }}
+              >
+                📌 置顶
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>
             {new Date(post.createdAt).toLocaleString()}
           </div>
         </div>
@@ -485,45 +503,48 @@ export default function PostCard({
               type="button"
               aria-label="更多操作"
               onClick={() => setShowActionMenu((v) => !v)}
+              className="btn-ghost"
               style={{
-                fontSize: '22px',
-                color: '#999',
-                background: 'none',
-                border: '1px solid #e0e0e0',
-                borderRadius: '6px',
-                width: '40px',
-                height: '40px',
+                fontSize: '20px',
+                color: 'var(--fg-muted)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-pill)',
+                width: '36px',
+                height: '36px',
                 lineHeight: 1,
-                cursor: 'pointer',
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               ⋮
             </button>
             {showActionMenu && (
               <div
+                className="modal-content glass"
                 style={{
                   position: 'absolute',
                   right: 0,
-                  top: '36px',
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
-                  minWidth: '148px',
+                  top: '40px',
+                  borderRadius: 'var(--radius-sm)',
+                  minWidth: '160px',
                   zIndex: 30,
                   overflow: 'hidden',
+                  padding: 4,
                 }}
               >
                 <button
                   type="button"
                   disabled={pinning}
                   onClick={handleTogglePin}
+                  className="btn-ghost"
                   style={{
                     width: '100%',
                     textAlign: 'left',
-                    padding: '10px 14px',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-xs)',
                     border: 'none',
-                    background: '#fff',
                     fontSize: '14px',
                     cursor: pinning ? 'not-allowed' : 'pointer',
                   }}
@@ -537,16 +558,15 @@ export default function PostCard({
                       setShowActionMenu(false);
                       setShowDeleteConfirm(true);
                     }}
+                    className="btn-ghost"
                     style={{
                       width: '100%',
                       textAlign: 'left',
-                    padding: '10px 14px',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-xs)',
                       border: 'none',
-                      borderTop: '1px solid #f1f5f9',
-                      background: '#fff',
-                      color: '#c0392b',
-                    fontSize: '14px',
-                      cursor: 'pointer',
+                      color: 'var(--danger)',
+                      fontSize: '14px',
                     }}
                   >
                     {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
@@ -560,13 +580,13 @@ export default function PostCard({
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
+              className="btn-ghost"
               style={{
                 fontSize: '13px',
-                color: '#999',
-                background: 'none',
-                border: '1px solid #e0e0e0',
-                borderRadius: '6px',
-                padding: '4px 10px',
+                color: 'var(--fg-muted)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-pill)',
+                padding: '4px 12px',
               }}
             >
               {isAdmin && !isOwnPost ? '删除（管理）' : '删除'}
@@ -576,6 +596,7 @@ export default function PostCard({
       </div>
 
       <p
+        className="text-line-fit"
         style={{
           marginBottom: '8px',
           whiteSpace: 'pre-wrap',
@@ -609,71 +630,93 @@ export default function PostCard({
         </div>
       )}
 
-      {post.media.length > 0 && (
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {post.media.slice(0, 3).map((media) => (
-              <img
-                key={media.id}
-                src={`http://localhost:4000${media.url}`}
-                alt="Media"
-                title="双击查看大图"
-                style={{
-                  width: 'calc((100% - 16px) / 3)',
-                  height: '110px',
-                  objectFit: 'cover',
-                  borderRadius: '8px',
-                  cursor: 'zoom-in',
-                }}
-                onDoubleClick={() =>
-                  setPreviewImageUrl(`http://localhost:4000${media.url}`)
-                }
-              />
-            ))}
+      {post.media.length > 0 && (() => {
+        const mediaList = post.media.slice(0, 3);
+        const count = mediaList.length;
+        // 根据图片数量自适应：1 张宽幅、2 张半分、3 张三分；统一用 aspect-ratio 跟随宽度缩放
+        const gridTemplateColumns =
+          count === 1 ? '1fr' : count === 2 ? '1fr 1fr' : '1fr 1fr 1fr';
+        const aspectRatio =
+          count === 1 ? '16 / 10' : count === 2 ? '4 / 3' : '1 / 1';
+        return (
+          <div style={{ marginBottom: '12px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gap: '8px',
+                gridTemplateColumns,
+              }}
+            >
+              {mediaList.map((media) => (
+                <div
+                  key={media.id}
+                  className="img-hover"
+                  title="双击查看大图"
+                  style={{
+                    aspectRatio,
+                    maxHeight: count === 1 ? 420 : undefined,
+                    cursor: 'zoom-in',
+                    borderRadius: '8px',
+                  }}
+                  onDoubleClick={() =>
+                    setPreviewImageUrl(`http://localhost:4000${media.url}`)
+                  }
+                >
+                  <img src={`http://localhost:4000${media.url}`} alt="Media" />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div
+        className="flex-wrap-sm"
         style={{
           display: 'flex',
-          gap: '24px',
+          gap: '8px',
           fontSize: '14px',
-          color: '#666',
           marginBottom: '16px',
+          rowGap: 8,
+          alignItems: 'center',
         }}
       >
-        <span style={{ cursor: 'pointer' }} onClick={handleOpenComments}>
-          💬 {post.counts.comments}
-        </span>
-        <span
-          role="button"
-          tabIndex={0}
-          className={likeAnim ? 'post-action-hit' : undefined}
-          onAnimationEnd={() => setLikeAnim(false)}
-          style={{
-            cursor: 'pointer',
-            color: postState.liked ? '#ff4757' : '#666',
-          }}
+        <button type="button" className="icon-btn" onClick={handleOpenComments} aria-label="评论">
+          <span style={{ fontSize: 16, lineHeight: 1 }}>💬</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{post.counts.comments}</span>
+        </button>
+        <button
+          type="button"
+          className={`icon-btn${postState.liked ? ' active-like' : ''}`}
           onClick={handleLike}
-          onKeyDown={(e) => e.key === 'Enter' && handleLike()}
+          aria-label="点赞"
+          aria-pressed={postState.liked}
         >
-          👍 {post.counts.likes}
-        </span>
-        <span
-          role="button"
-          tabIndex={0}
-          className={favAnim ? 'post-action-hit' : undefined}
-          onAnimationEnd={() => setFavAnim(false)}
-          style={{
-            cursor: 'pointer',
-            color: postState.favorited ? '#ffa502' : '#666',
-          }}
+          <span
+            className={likeAnim ? 'post-action-hit' : undefined}
+            onAnimationEnd={() => setLikeAnim(false)}
+            style={{ fontSize: 16, lineHeight: 1 }}
+          >
+            {postState.liked ? '❤️' : '🤍'}
+          </span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{post.counts.likes}</span>
+        </button>
+        <button
+          type="button"
+          className={`icon-btn${postState.favorited ? ' active-fav' : ''}`}
           onClick={handleFavorite}
-          onKeyDown={(e) => e.key === 'Enter' && handleFavorite()}
+          aria-label="收藏"
+          aria-pressed={postState.favorited}
         >
-          ⭐ {post.counts.favorites}
-        </span>
+          <span
+            className={favAnim ? 'post-action-hit' : undefined}
+            onAnimationEnd={() => setFavAnim(false)}
+            style={{ fontSize: 16, lineHeight: 1 }}
+          >
+            {postState.favorited ? '⭐' : '☆'}
+          </span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{post.counts.favorites}</span>
+        </button>
       </div>
 
       {expandedComments && loadingComments && (
@@ -727,17 +770,22 @@ export default function PostCard({
                       }}
                     >
                       <div
+                        className="flex-wrap-sm"
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'flex-start',
+                          gap: 6,
+                          rowGap: 2,
                         }}
                       >
                         <div
+                          className="flex-wrap-sm"
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
+                            minWidth: 0,
                           }}
                         >
                           <UserProfileLink
@@ -758,6 +806,7 @@ export default function PostCard({
                         const isLong = lineCount(mainComment.content) > PREVIEW_LINES;
                         return (
                           <p
+                        className="text-line-fit"
                         style={{
                           fontSize: '14px',
                           marginTop: '4px',
@@ -774,10 +823,12 @@ export default function PostCard({
                         );
                       })()}
                       <div
+                        className="flex-wrap-sm"
                         style={{
                           display: 'flex',
                           gap: '12px',
                           fontSize: '12px',
+                          rowGap: 4,
                         }}
                       >
                         <button
@@ -862,6 +913,7 @@ export default function PostCard({
                           }}
                         >
                           <textarea
+                            className="text-line-fit"
                             rows={Math.min(
                               MAX_COMMENT_LINES,
                               Math.max(1, lineCount(replyInputs[mainComment.id] || ''))
@@ -948,10 +1000,13 @@ export default function PostCard({
                                 }}
                               >
                                 <div
+                                  className="flex-wrap-sm"
                                   style={{
                                     display: 'flex',
                                     justifyContent: 'space-between',
                                     alignItems: 'flex-start',
+                                    gap: 6,
+                                    rowGap: 2,
                                   }}
                                 >
                                   <div
@@ -960,6 +1015,7 @@ export default function PostCard({
                                       alignItems: 'center',
                                       gap: '8px',
                                       flexWrap: 'wrap',
+                                      minWidth: 0,
                                     }}
                                   >
                                     <UserProfileLink
@@ -975,9 +1031,12 @@ export default function PostCard({
                                         />
                                       ) : (
                                         <span
+                                          className="text-line-fit"
                                           style={{
+                                            display: 'inline-block',
                                             fontSize: 12,
                                             color: '#c0c0c0',
+                                            verticalAlign: 'bottom',
                                           }}
                                         >
                                           @{mention}
@@ -997,6 +1056,7 @@ export default function PostCard({
                                   const isLong = lineCount(text) > PREVIEW_LINES;
                                   return (
                                     <p
+                                  className="text-line-fit"
                                   style={{
                                     fontSize: '14px',
                                     marginTop: '4px',
@@ -1015,10 +1075,12 @@ export default function PostCard({
                                   );
                                 })()}
                                 <div
+                                  className="flex-wrap-sm"
                                   style={{
                                     display: 'flex',
                                     gap: '12px',
                                     fontSize: '12px',
+                                    rowGap: 4,
                                   }}
                                 >
                                   <button
@@ -1087,6 +1149,7 @@ export default function PostCard({
                                     }}
                                   >
                                     <textarea
+                                      className="text-line-fit"
                                       rows={Math.min(
                                         MAX_COMMENT_LINES,
                                         Math.max(
@@ -1244,6 +1307,7 @@ export default function PostCard({
 
       <div style={{ display: 'flex', gap: '8px' }}>
         <textarea
+          className="text-line-fit"
           rows={Math.min(MAX_COMMENT_LINES, Math.max(1, lineCount(commentInput)))}
           value={commentInput}
           onChange={(e) => setCommentInput(clampLines(e.target.value, MAX_COMMENT_LINES))}
@@ -1267,6 +1331,7 @@ export default function PostCard({
         <button
           type="button"
           onClick={handleCommentSubmit}
+          className="btn-primary"
           style={{
             padding: '8px 16px',
             background: '#0070f3',
@@ -1283,10 +1348,13 @@ export default function PostCard({
 
       {showDeleteConfirm && (
         <div
+          className="modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.45)',
+            background: 'rgba(15, 23, 42, 0.5)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             zIndex: 200,
             display: 'flex',
             alignItems: 'center',
@@ -1299,32 +1367,37 @@ export default function PostCard({
           <div
             role="dialog"
             aria-modal="true"
+            className="modal-content"
             style={{
               background: 'white',
-              borderRadius: '12px',
-              padding: '24px',
-              maxWidth: 360,
+              borderRadius: 'var(--radius-lg)',
+              padding: '28px',
+              maxWidth: 380,
               width: '100%',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+              boxShadow: 'var(--shadow-xl)',
+              border: '1px solid var(--border)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <p style={{ fontSize: '16px', marginBottom: '8px', fontWeight: 600 }}>
+            <p style={{ fontSize: 17, marginBottom: 8, fontWeight: 600, color: 'var(--fg)' }}>
               删除帖子？
             </p>
-            <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
+            <p style={{ fontSize: 14, color: 'var(--fg-muted)', marginBottom: 24, lineHeight: 1.6 }}>
               删除后无法恢复，确定要删除这条帖子吗？
             </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
               <button
                 type="button"
                 disabled={deleting}
                 onClick={() => setShowDeleteConfirm(false)}
+                className="btn-secondary"
                 style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #ddd',
+                  padding: '9px 18px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
                   background: 'white',
+                  fontSize: 14,
+                  fontWeight: 500,
                   cursor: deleting ? 'not-allowed' : 'pointer',
                 }}
               >
@@ -1334,12 +1407,15 @@ export default function PostCard({
                 type="button"
                 disabled={deleting}
                 onClick={handleConfirmDelete}
+                className="btn-danger"
                 style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
+                  padding: '9px 18px',
+                  borderRadius: 'var(--radius-sm)',
                   border: 'none',
-                  background: '#e74c3c',
+                  background: 'var(--danger)',
                   color: 'white',
+                  fontSize: 14,
+                  fontWeight: 500,
                   cursor: deleting ? 'not-allowed' : 'pointer',
                 }}
               >
@@ -1353,6 +1429,7 @@ export default function PostCard({
         <div
           role="presentation"
           onClick={() => setPreviewImageUrl(null)}
+          className="modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1367,6 +1444,7 @@ export default function PostCard({
           <img
             src={previewImageUrl}
             alt="预览图"
+            className="modal-content"
             style={{
               maxWidth: '92vw',
               maxHeight: '92vh',

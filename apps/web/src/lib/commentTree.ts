@@ -9,7 +9,8 @@ function assignLayerFromLegacyAt(
   mainComments: { id: string; author: { username: string }; createdAt: Date }[],
   layers: Record<string, number>
 ) {
-  const match = reply.content.match(/@(\w+)/);
+  // 仅匹配开头的 @用户名（前端发回复时固定以 @用户名 开头），避免正文中随手 @ 造成误判
+  const match = reply.content.match(/^\s*@(\w+)/);
   if (match) {
     const targetUsername = match[1];
     const candidates = mainComments.filter((c) => c.author.username === targetUsername);
@@ -42,10 +43,9 @@ export function buildCommentTree(postComments: unknown[]) {
   sortedComments.forEach((comment: any) => {
     const hasLayerMain =
       comment.layerMainId != null && String(comment.layerMainId).length > 0;
+    // 只把「以 @用户名 开头」的旧评论识别为回复；避免新主评论里随意 @ 他人被误当成回复
     const legacyAtReply =
-      !hasLayerMain &&
-      comment.content.includes('@') &&
-      comment.content.match(/@\w+/);
+      !hasLayerMain && /^\s*@\w+/.test(String(comment.content ?? ''));
     if (hasLayerMain || legacyAtReply) {
       replyComments.push(comment);
     } else {

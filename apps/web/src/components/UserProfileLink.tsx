@@ -30,10 +30,13 @@ export function UserProfileLink({ userId, username, style }: Props) {
     <Link
       href={href}
       prefetch={false}
+      className="text-line-fit"
       style={{
+        display: 'inline-block',
         fontWeight: 500,
         color: '#333',
         textDecoration: 'none',
+        verticalAlign: 'bottom',
         ...style,
       }}
     >
@@ -50,11 +53,14 @@ export function AtUserLink({ userId, mentionUsername }: { userId: string; mentio
     <Link
       href={href}
       prefetch={false}
+      className="text-line-fit"
       style={{
+        display: 'inline-block',
         fontSize: 12,
         color: '#c0c0c0',
         textDecoration: 'none',
         marginRight: 4,
+        verticalAlign: 'bottom',
       }}
     >
       @{mentionUsername}

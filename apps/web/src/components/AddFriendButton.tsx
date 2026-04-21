@@ -112,7 +112,7 @@ export default function AddFriendButton({ userId }: { userId: string }) {
           cursor: 'pointer',
         }}
         onClick={() => {
-          router.push(`/friends?friendId=${encodeURIComponent(userId)}`);
+          router.push(`/messages?friendId=${encodeURIComponent(userId)}`);
         }}
       >
         发信息

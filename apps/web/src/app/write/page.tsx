@@ -73,33 +73,57 @@ export default function WritePage() {
   };
 
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto' }}>
-      <h1 style={{ fontSize: '24px', marginBottom: '24px' }}>发布帖子</h1>
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <header style={{ marginBottom: 24 }}>
+        <h1 className="responsive-h1" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 4 }}>
+          发布帖子
+        </h1>
+        <p style={{ fontSize: 14, color: 'var(--fg-muted)' }}>分享你的想法和见闻</p>
+      </header>
+
       {error && (
-        <div style={{ color: 'red', marginBottom: '16px' }}>{error}</div>
+        <div
+          className="text-line-fit fade-in"
+          style={{
+            color: 'var(--danger-600)',
+            marginBottom: 16,
+            background: 'rgba(239, 68, 68, 0.08)',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 13,
+            border: '1px solid rgba(239, 68, 68, 0.18)',
+          }}
+        >
+          {error}
+        </div>
       )}
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '24px' }}>
+      <form onSubmit={handleSubmit} className="card slide-up-enter" style={{ padding: 20, borderRadius: 'var(--radius-lg)' }}>
+        <div style={{ marginBottom: 20 }}>
           <textarea
+            className="text-line-fit"
             value={content}
             onChange={(e) => setContent(clampLines(e.target.value, MAX_POST_LINES))}
             placeholder="分享你的想法..."
             style={{
               width: '100%',
-              minHeight: '200px',
-              padding: '16px',
-              borderRadius: '8px',
-              border: '1px solid #eaeaea',
-              fontSize: '16px',
+              minHeight: 200,
+              padding: 16,
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+              background: 'var(--surface-muted)',
+              fontSize: 15,
+              lineHeight: 1.7,
               resize: 'vertical'
             }}
           />
-          <div style={{ marginTop: '6px', fontSize: '12px', color: '#999' }}>
-            最多 {MAX_POST_LINES} 行
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--fg-subtle)' }}>
+            最多 {MAX_POST_LINES} 行 · 当前 {content.split('\n').length} 行
           </div>
         </div>
-        <div style={{ marginBottom: '24px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>添加图片</label>
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'var(--fg-secondary)', fontWeight: 500 }}>
+            添加图片
+          </label>
           <input
             ref={fileInputRef}
             type="file"
@@ -113,53 +137,83 @@ export default function WritePage() {
             type="button"
             disabled={images.length >= MAX_IMAGES}
             onClick={() => fileInputRef.current?.click()}
+            className="btn-secondary"
             style={{
-              marginBottom: '12px',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: '1px solid #ddd',
-              background: images.length >= MAX_IMAGES ? '#f5f5f5' : '#fff',
-              color: images.length >= MAX_IMAGES ? '#999' : '#333',
+              marginBottom: 10,
+              padding: '9px 16px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+              background: images.length >= MAX_IMAGES ? 'var(--surface-sunken)' : 'var(--surface)',
+              color: images.length >= MAX_IMAGES ? 'var(--fg-subtle)' : 'var(--fg)',
+              fontSize: 14,
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
               cursor: images.length >= MAX_IMAGES ? 'not-allowed' : 'pointer',
             }}
           >
-            选择图片
+            <span aria-hidden>🖼️</span>
+            <span>选择图片</span>
           </button>
-          <div style={{ marginTop: '-6px', marginBottom: '10px', fontSize: '12px', color: '#999' }}>
-            一次最多 {MAX_IMAGES} 张
+          <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--fg-subtle)' }}>
+            一次最多 {MAX_IMAGES} 张 · 已选 {images.length}
           </div>
           {images.length > 0 && (
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div
+              className="stagger-list"
+              style={{
+                display: 'grid',
+                gap: 12,
+                gridTemplateColumns:
+                  images.length === 1
+                    ? '1fr'
+                    : images.length === 2
+                    ? '1fr 1fr'
+                    : '1fr 1fr 1fr',
+              }}
+            >
               {images.map((image, index) => (
-                <div key={index} style={{ position: 'relative', width: '33.33%' }}>
-                  <img
-                    src={URL.createObjectURL(image)}
-                    alt={`预览 ${index + 1}`}
-                    style={{ 
-                      width: '100%',
-                      height: '110px',
-                      objectFit: 'cover', 
-                      borderRadius: '8px'
-                    }}
-                  />
+                <div
+                  key={index}
+                  className="img-hover"
+                  style={
+                    {
+                      position: 'relative',
+                      aspectRatio:
+                        images.length === 1
+                          ? '16 / 10'
+                          : images.length === 2
+                          ? '4 / 3'
+                          : '1 / 1',
+                      maxHeight: images.length === 1 ? 420 : undefined,
+                      borderRadius: 'var(--radius-sm)',
+                      boxShadow: 'var(--shadow-xs)',
+                      ['--stagger-index' as any]: index,
+                    } as React.CSSProperties
+                  }
+                >
+                  <img src={URL.createObjectURL(image)} alt={`预览 ${index + 1}`} />
                   <button
                     type="button"
+                    aria-label="移除图片"
                     onClick={() => removeImage(index)}
                     style={{
                       position: 'absolute',
-                      top: '-8px',
-                      right: '-8px',
-                      background: 'red',
+                      top: 6,
+                      right: 6,
+                      background: 'rgba(15,23,42,0.72)',
                       color: 'white',
                       border: 'none',
                       borderRadius: '50%',
-                      width: '24px',
-                      height: '24px',
-                      fontSize: '16px',
-                      cursor: 'pointer',
+                      width: 24,
+                      height: 24,
+                      fontSize: 14,
+                      backdropFilter: 'blur(4px)',
+                      WebkitBackdropFilter: 'blur(4px)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
                     }}
                   >
                     ×
@@ -169,19 +223,19 @@ export default function WritePage() {
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '16px' }}>
+        <div className="flex-wrap-sm" style={{ display: 'flex', gap: 12, rowGap: 12, justifyContent: 'flex-end' }}>
           <button
             type="button"
             onClick={() => router.back()}
+            className="btn-secondary"
             style={{
-              padding: '12px 24px',
+              padding: '11px 22px',
               background: 'white',
-              color: '#333',
-              borderRadius: '8px',
-              border: '1px solid #eaeaea',
-              fontSize: '16px',
-              fontWeight: '500',
-              cursor: 'pointer'
+              color: 'var(--fg)',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+              fontSize: 15,
+              fontWeight: 500,
             }}
           >
             取消
@@ -189,18 +243,20 @@ export default function WritePage() {
           <button
             type="submit"
             disabled={loading}
+            className="btn-primary"
             style={{
-              padding: '12px 24px',
-              background: '#0070f3',
+              padding: '11px 28px',
+              background: 'var(--brand-500)',
               color: 'white',
-              borderRadius: '8px',
+              borderRadius: 'var(--radius-sm)',
               border: 'none',
-              fontSize: '16px',
-              fontWeight: '500',
-              cursor: loading ? 'not-allowed' : 'pointer'
+              fontSize: 15,
+              fontWeight: 500,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              boxShadow: 'var(--shadow-brand)',
             }}
           >
-            {loading ? '发布中...' : '发布'}
+            {loading ? '发布中…' : '发布'}
           </button>
         </div>
       </form>

@@ -74,11 +74,14 @@ socialRouter.delete('/posts/:postId/comments/layer/:mainCommentId', requireAuth(
       orderBy: { createdAt: 'asc' },
     });
 
+    // 必须保留 layerMainId，否则 buildCommentTree 会退化为旧 @ 启发式，
+    // 导致同层回复误判（例如新主评论文本含 @ 时被当成某层回复）
     const forTree = rows.map((c) => ({
       id: c.id,
       content: c.content,
       createdAt: c.createdAt,
       author: c.author,
+      layerMainId: c.layerMainId,
     }));
 
     const tree = buildCommentTree(forTree);

@@ -42,7 +42,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {showChildren ? (
         children
       ) : (
-        <div style={{ textAlign: 'center', padding: '48px' }}>加载中...</div>
+        <div
+          className="fade-in"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '96px 16px',
+            color: 'var(--fg-subtle)',
+            fontSize: 13,
+            letterSpacing: '0.02em',
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              border: '2.5px solid var(--brand-ring)',
+              borderTopColor: 'var(--brand-500)',
+              animation: 'app-loader-spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite',
+              marginBottom: 14,
+            }}
+          />
+          <span>加载中…</span>
+          <style>{`@keyframes app-loader-spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
       )}
     </>
   );

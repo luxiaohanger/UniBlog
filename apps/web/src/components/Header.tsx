@@ -91,6 +91,14 @@ export default function Header() {
   const isAuthed = !!accessToken;
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [unreadTick, setUnreadTick] = useState(0);
+  // 滚动超过阈值时给 header 加阴影
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 2);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     return subscribeUnreadChanged(() => setUnreadTick((v) => v + 1));
@@ -179,29 +187,81 @@ export default function Header() {
     router.replace('/');
   };
 
+  const isActive = (href: string) => {
+    if (!pathname) return false;
+    if (href === '/me') return pathname === '/me' || pathname.startsWith('/me/');
+    if (href === '/circles') return pathname === '/circles' || pathname.startsWith('/circles/');
+    if (href === '/write') return pathname === '/write';
+    if (href.startsWith('/messages')) return pathname === '/messages' || pathname.startsWith('/messages/');
+    return pathname === href;
+  };
+
   return (
-    <header style={{ 
-      background: 'white', 
-      borderBottom: '1px solid #eaeaea', 
-      padding: '12px 16px',
-      position: 'sticky',
-      top: 0,
-      zIndex: 100
-    }}>
-      <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <header
+      className={`app-header${scrolled ? ' scrolled' : ''}`}
+      style={{
+        padding: '12px 20px',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+      }}
+    >
+      <div className="header-bar" style={{ maxWidth: 1024, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {/* 平台名称仅展示，不可点击跳转 */}
-        <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#333' }}>
-          UniBlog
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 19,
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: 'var(--brand-gradient)',
+              color: '#fff',
+              fontSize: 15,
+              fontWeight: 700,
+              boxShadow: '0 4px 10px rgba(0,112,243,0.28)',
+            }}
+          >
+            U
+          </span>
+          <span
+            style={{
+              background: 'var(--brand-gradient)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
+          >
+            UniBlog
+          </span>
         </span>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+        <div className="header-nav" style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
           {isAuthed ? (
             <>
-              <Link href="/circles" prefetch={false} style={{ color: '#333', textDecoration: 'none' }}>
+              <Link
+                href="/circles"
+                prefetch={false}
+                className={`nav-link${isActive('/circles') ? ' active' : ''}`}
+                style={{ color: '#333', textDecoration: 'none' }}
+              >
                 圈子
               </Link>
               <Link
-                href="/friends?focus=unread"
+                href="/messages?focus=unread"
                 prefetch={false}
+                className={`nav-link${isActive('/messages') ? ' active' : ''}`}
                 style={{ color: '#333', textDecoration: 'none' }}
               >
                 <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
@@ -209,26 +269,85 @@ export default function Header() {
                   <Dot show={hasMessageRootUnread} />
                 </span>
               </Link>
-              <Link href="/me" prefetch={false} style={{ color: '#333', textDecoration: 'none' }}>
-                <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <Link
+                href="/me"
+                prefetch={false}
+                className={`nav-link${isActive('/me') ? ' active' : ''}`}
+                style={{ color: '#333', textDecoration: 'none' }}
+              >
+                <span className="text-line-fit" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                   {username ? `「${username}」的主页` : '「我」的主页'}
                 </span>
               </Link>
-              <Link href="/write" prefetch={false} style={{ color: '#333', textDecoration: 'none' }}>
-                发帖
+              <Link
+                href="/write"
+                prefetch={false}
+                className="btn-primary"
+                style={{
+                  color: '#fff',
+                  textDecoration: 'none',
+                  background: 'var(--brand-500)',
+                  padding: '8px 18px',
+                  borderRadius: 'var(--radius-pill)',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  boxShadow: 'var(--shadow-brand)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span aria-hidden>✨</span>
+                <span>发帖</span>
               </Link>
-              <button type="button" onClick={() => setShowLogoutConfirm(true)} style={{ 
-                background: 'none', 
-                border: '1px solid #ddd', 
-                padding: '4px 12px', 
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}>退出登录</button>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(true)}
+                className="btn-ghost"
+                style={{
+                  border: '1px solid var(--border)',
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-pill)',
+                  fontSize: 13,
+                }}
+              >
+                退出
+              </button>
             </>
           ) : (
             <>
-              <Link href="/login" style={{ color: '#333', textDecoration: 'none' }}>登录</Link>
-              <Link href="/register" style={{ color: '#333', textDecoration: 'none' }}>注册</Link>
+              <Link
+                href="/login"
+                className="btn-secondary"
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: 'var(--radius-pill)',
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--fg)',
+                  textDecoration: 'none',
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+              >
+                登录
+              </Link>
+              <Link
+                href="/register"
+                className="btn-primary"
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: 'var(--radius-pill)',
+                  background: 'var(--brand-500)',
+                  color: '#fff',
+                  textDecoration: 'none',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  boxShadow: 'var(--shadow-brand)',
+                }}
+              >
+                注册
+              </Link>
             </>
           )}
         </div>
@@ -243,14 +362,17 @@ export default function Header() {
         <div
           role="presentation"
           onClick={() => setShowLogoutConfirm(false)}
+          className="modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.45)',
+            background: 'rgba(15, 23, 42, 0.5)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            padding: '16px',
+            padding: 16,
             zIndex: 300,
           }}
         >
@@ -258,29 +380,52 @@ export default function Header() {
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
+            className="modal-content"
             style={{
               background: '#fff',
-              borderRadius: '12px',
-              maxWidth: '360px',
+              borderRadius: 'var(--radius-lg)',
+              maxWidth: 380,
               width: '100%',
-              padding: '20px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+              padding: 28,
+              boxShadow: 'var(--shadow-xl)',
+              border: '1px solid var(--border)',
             }}
           >
-            <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>确认退出登录？</div>
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '16px' }}>退出后将返回主界面。</div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 8, color: 'var(--fg)' }}>
+              确认退出登录？
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--fg-muted)', marginBottom: 24, lineHeight: 1.6 }}>
+              退出后将返回主界面。
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
               <button
                 type="button"
                 onClick={() => setShowLogoutConfirm(false)}
-                style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #ddd', background: '#fff' }}
+                className="btn-secondary"
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  background: '#fff',
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#e74c3c', color: '#fff' }}
+                className="btn-danger"
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: 'var(--danger)',
+                  color: '#fff',
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
               >
                 确认退出
               </button>

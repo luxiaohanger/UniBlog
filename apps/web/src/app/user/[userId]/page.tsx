@@ -90,7 +90,7 @@ export default function UserPublicPage() {
           marginBottom: '8px',
         }}
       >
-        <h1 style={{ fontSize: '22px' }}>「{profile.username}」的主页</h1>
+        <h1 className="text-line-fit" style={{ fontSize: '22px' }}>「{profile.username}」的主页</h1>
         <AddFriendButton userId={profile.id} />
       </div>
       <p style={{ fontSize: '14px', color: '#666', marginBottom: '24px' }}>

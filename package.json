@@ -10,7 +10,6 @@
     "dev:api": "npm run dev -w \"@uniblog/api\"",
     "dev:web": "npm run dev -w \"@uniblog/web\"",
     "dev:up": "bash ./scripts/dev-up.sh",
-    "dev:refresh": "bash ./scripts/dev-refresh.sh",
     "dev:stop": "bash ./scripts/dev-stop.sh",
     "build": "npm run build -w \"@uniblog/api\" && npm run build -w \"@uniblog/web\"",
     "lint": "npm run lint -w \"@uniblog/api\" && npm run lint -w \"@uniblog/web\""

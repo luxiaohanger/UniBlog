@@ -47,67 +47,121 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: '0 auto', padding: '32px 16px' }}>
-      <h1 style={{ fontSize: '24px', marginBottom: '24px', textAlign: 'center' }}>登录</h1>
-      {error && (
-        <div style={{ color: 'red', marginBottom: '16px', textAlign: 'center' }}>
-          {error}
-        </div>
-      )}
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>邮箱/用户名</label>
-          <input
-            type="text"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            required
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '8px',
-              border: '1px solid #eaeaea',
-              fontSize: '16px'
-            }}
-            placeholder="请输入邮箱或用户名"
-          />
-        </div>
-        <div style={{ marginBottom: '24px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>密码</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '8px',
-              border: '1px solid #eaeaea',
-              fontSize: '16px'
-            }}
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
+    <div style={{ maxWidth: 440, margin: '0 auto', padding: '48px 16px' }}>
+      <div
+        className="card slide-up-enter"
+        style={{
+          padding: '36px 32px',
+          borderRadius: 'var(--radius-xl)',
+          boxShadow: 'var(--shadow-md)',
+        }}
+      >
+        <h1
+          className="responsive-h1"
           style={{
-            width: '100%',
-            padding: '12px',
-            background: '#0070f3',
-            color: 'white',
-            borderRadius: '8px',
-            border: 'none',
-            fontSize: '16px',
-            fontWeight: '500',
-            cursor: loading ? 'not-allowed' : 'pointer'
+            fontSize: 28,
+            marginBottom: 8,
+            textAlign: 'center',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
           }}
         >
-          {loading ? '登录中...' : '登录'}
-        </button>
-      </form>
-      <div style={{ marginTop: '16px', textAlign: 'center' }}>
-        还没有账号？ <Link href="/register" style={{ color: '#0070f3' }}>立即注册</Link>
+          欢迎回来
+        </h1>
+        <p style={{ fontSize: 14, color: 'var(--fg-muted)', textAlign: 'center', marginBottom: 28 }}>
+          登录你的 UniBlog 账号
+        </p>
+
+        {error && (
+          <div
+            className="text-line-fit fade-in"
+            style={{
+              color: 'var(--danger-600)',
+              marginBottom: 16,
+              textAlign: 'center',
+              marginLeft: 'auto',
+              marginRight: 'auto',
+              background: 'rgba(239, 68, 68, 0.08)',
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: 13,
+              border: '1px solid rgba(239, 68, 68, 0.18)',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'var(--fg-secondary)', fontWeight: 500 }}>
+              邮箱 / 用户名
+            </label>
+            <input
+              className="text-line-fit"
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-muted)',
+                fontSize: 15,
+              }}
+              placeholder="请输入邮箱或用户名"
+            />
+          </div>
+          <div style={{ marginBottom: 28 }}>
+            <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'var(--fg-secondary)', fontWeight: 500 }}>
+              密码
+            </label>
+            <input
+              className="text-line-fit"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-muted)',
+                fontSize: 15,
+              }}
+              placeholder="请输入密码"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-primary"
+            style={{
+              width: '100%',
+              padding: '13px',
+              background: 'var(--brand-500)',
+              color: 'white',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              fontSize: 15,
+              fontWeight: 500,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              boxShadow: 'var(--shadow-brand)',
+            }}
+          >
+            {loading ? '登录中…' : '登录'}
+          </button>
+        </form>
+
+        <div style={{ marginTop: 22, textAlign: 'center', fontSize: 14, color: 'var(--fg-muted)' }}>
+          还没有账号？{' '}
+          <Link href="/register" style={{ color: 'var(--brand-500)', fontWeight: 500, textDecoration: 'none' }}>
+            立即注册
+          </Link>
+        </div>
       </div>
     </div>
   );
