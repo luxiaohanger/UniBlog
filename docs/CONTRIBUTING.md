@@ -19,12 +19,12 @@ fork / branch ─► 本地改代码 ─► 同步更新文档 ─► 更新 CHA
 
 | 代码变更范围 | 需同步更新的文档 |
 | --- | --- |
-| 新增 / 修改 / 删除 API 路由或响应字段 | `docs/API.md`、必要时 `docs/ARCHITECTURE.md` |
-| 修改 `apps/api/prisma/schema.prisma` / 新建迁移 | `docs/DATABASE.md`（模型说明 + 迁移列表） |
-| 新增 / 调整前端页面 or 关键组件 | `docs/FRONTEND.md`（目录结构 / 复用要点） |
-| 修改开发脚本、环境变量、启动流程 | `README.md`、`docs/DEVELOPMENT.md`、`apps/api/.env.example` |
+| 新增 / 修改 / 删除 API 路由或响应字段 | `apps/api/docs/API.md`、必要时 `docs/ARCHITECTURE.md` |
+| 修改 `apps/api/prisma/schema.prisma` / 新建迁移 | `apps/api/docs/DATABASE.md`（模型说明 + 迁移列表） |
+| 新增 / 调整前端页面 or 关键组件 | `apps/web/docs/FRONTEND.md`（目录结构 / 复用要点） |
+| 修改开发脚本、环境变量、启动流程 | `README.md`、`scripts/README.md`、`docker/compose.yml`、`docker/README.md`、`apps/api/docs/DEVELOPMENT.md`、`apps/api/.env.example` |
 | 架构级重构（模块拆分 / 新增包） | `docs/ARCHITECTURE.md`、`README.md`「项目结构」 |
-| **任意用户可感知的变更** | `CHANGELOG.md` 的 `[Unreleased]` 段落追加一条 |
+| **任意用户可感知的变更** | `docs/CHANGELOG.md` 的 `[Unreleased]` 段落追加一条 |
 
 ### CHANGELOG 追加规则
 
@@ -79,7 +79,7 @@ docs(db): 补充 Friendship 状态机说明
 - 错误响应统一 `{ error: '<snake_case_code>' }`。
 - 前端样式优先内联 `style={{}}`，共享类写在 `apps/web/src/app/globals.css`；禁止 `*.module.css`。
 - 所有异步交互必须处理 Loading / Error 态。
-- 详细规范见 [.cursorrules](./.cursorrules)。
+- 详细规范见 [.cursorrules](../.cursorrules)。
 
 ## 5. 提交前自检
 
@@ -93,11 +93,11 @@ npm exec -w "@uniblog/api" prisma migrate dev --name <change>
 Checklist：
 
 - [ ] 代码可编译、lint 通过。
-- [ ] 相关 `docs/*.md` 已同步（对照本页第 2 节表格）。
-- [ ] `CHANGELOG.md` 的 `[Unreleased]` 已追加条目。
-- [ ] 新增 API：`docs/API.md` 包含路径、参数、示例响应、错误码。
-- [ ] 新增 Schema 字段 / 迁移：`docs/DATABASE.md` 已更新，迁移目录已提交。
-- [ ] 新增环境变量：`apps/api/.env.example` 与 `docs/DEVELOPMENT.md` 都已更新。
+- [ ] 相关文档（`docs/`、`apps/*/docs/`、`scripts/README.md` 等）已同步（对照本页第 2 节表格）。
+- [ ] `docs/CHANGELOG.md` 的 `[Unreleased]` 已追加条目。
+- [ ] 新增 API：`apps/api/docs/API.md` 包含路径、参数、示例响应、错误码。
+- [ ] 新增 Schema 字段 / 迁移：`apps/api/docs/DATABASE.md` 已更新，迁移目录已提交。
+- [ ] 新增环境变量：`apps/api/.env.example` 与 `apps/api/docs/DEVELOPMENT.md` 都已更新。
 - [ ] 敏感信息（真实 `.env`、密钥、上传文件）未被提交。
 
 ## 6. 分支与 PR
@@ -111,7 +111,7 @@ Checklist：
 
 ## 变更
 - [ ] 代码：...
-- [ ] 文档：docs/xxx.md、CHANGELOG
+- [ ] 文档：docs/xxx.md、docs/CHANGELOG.md
 - [ ] 数据库迁移：有 / 无
 
 ## 测试

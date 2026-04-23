@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '../../../lib/http';
-import { getTokens, setStoredDisplayUsername } from '../../../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens, setStoredDisplayUsername } from '@/features/client/token';
 import Avatar from '../../../components/Avatar';
 
 type MeUser = {

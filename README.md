@@ -15,9 +15,8 @@
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [快速开始](#快速开始)
-- [常用脚本](#常用脚本)
 - [环境变量](#环境变量)
-- [文档索引](#文档索引)
+- [文档索引](#文档索引)（[脚本 / 一键启动](./scripts/README.md)、[Docker 细节](./docker/README.md)）
 - [变更日志](#变更日志)
 - [贡献指南](#贡献指南)
 
@@ -31,7 +30,7 @@
 - **社交行为**：点赞、收藏、转发、已读/未读红点、好友申请/解除、一对一私信。
 - **通知中心**：评论、回复、点赞、收藏、管理员删除行为的聚合通知流。
 - **管理员能力**：删任意帖、删任意评论（单条 / 整层）、全局置顶。
-- **开发体验**：根目录一键启动（Docker Postgres + API + Web）、统一日志、热重启。
+- **开发体验**：Docker Compose 一键启动（Postgres + API + Web 均在容器内）、自动探测可用端口、日志跟随。
 
 ## 技术栈
 
@@ -49,86 +48,64 @@
 uniblog/
 ├── apps/
 │   ├── api/               # 后端服务 (@uniblog/api)
+│   │   ├── docs/          # API / 数据库 / 开发指南
 │   │   ├── prisma/        # 数据库 Schema 与迁移
 │   │   ├── src/
 │   │   │   ├── app.ts     # Express 应用装配
 │   │   │   ├── index.ts   # 启动入口
-│   │   │   ├── lib/       # 基础设施（prisma / auth / roles / commentTree）
+│   │   │   ├── lib/       # prisma / auth / config / logger / uploads 等
+│   │   │   ├── services/  # 领域用例（auth / posts / social / reports）
+│   │   │   ├── validators/# zod 校验
 │   │   │   ├── middleware # 鉴权中间件
-│   │   │   └── routes/    # 路由：auth / posts / social
+│   │   │   └── routes/    # 薄路由
 │   │   └── uploads/       # 本地上传目录（不入库）
 │   └── web/               # 前端应用 (@uniblog/web)
+│       ├── docs/          # 前端文档
 │       └── src/
 │           ├── app/       # App Router 页面
 │           ├── components # 复用组件
-│           └── lib/       # http / token / 工具
-├── scripts/               # dev-up / dev-stop 脚本
-├── docker-compose.yml     # 本地 Postgres
-└── docs/                  # 架构、API、数据库、前端等详细文档
+│           ├── features/  # client（http/token/config）与 shared 再导出
+│           └── lib/       # http / token / 工具（features 聚合引用）
+├── packages/
+│   └── shared/            # @uniblog/shared（评论树等前后端共用）
+├── docker/                # compose.yml、容器入口脚本与 README
+├── scripts/               # up.sh / down.sh（Bash，一键 Compose）+ README
+├── docs/                  # 架构、CHANGELOG、CONTRIBUTING、文档索引
+└── package.json           # npm workspaces 根
 ```
 
 ## 快速开始
 
-### 1. 先决条件
+**全栈开发**：依赖 **Docker**（含 Compose V2）、**bash** 与 **[`scripts/up.sh`](./scripts/up.sh)**。脚本说明见 **[scripts/README.md](./scripts/README.md)**，容器与卷见 [docker/README.md](./docker/README.md)。
 
-- Node.js ≥ 18（建议 20 LTS）
-- npm ≥ 9（仓库使用 npm workspaces）
-- Docker Desktop（用于运行 Postgres 容器）
+### 各操作系统
 
-### 2. 安装依赖
+| 系统 | Docker | 终端 / Shell |
+| --- | --- | --- |
+| **macOS** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 系统自带「终端」或其它已安装 `bash` 的终端即可。 |
+| **Linux** | [Docker Engine](https://docs.docker.com/engine/install/) + [Compose 插件](https://docs.docker.com/compose/install/linux/)（或 Docker Desktop for Linux） | 常见发行版默认 `bash`；确保 `docker compose version` 可用。 |
+| **Windows** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | **请使用 [Git Bash](https://git-scm.com/download/win)**（安装 Git for Windows 时勾选 Git Bash）。在本仓库中执行 `bash scripts/up.sh` / `bash scripts/down.sh`。**勿用 CMD 或 PowerShell 直接运行** `.sh`（脚本仅按 Bash 编写与验证）。 |
 
-```bash
-# 在仓库根目录执行
-npm install
-```
+1. **按上表安装并启动 Docker**，等待引擎就绪（例如 Docker Desktop 托盘图标显示运行中）。
+2. **按上表打开对应终端**，`cd` 到本仓库**根目录**（包含 `docker/compose.yml` 与 `scripts/` 的那一层）。
 
-### 3. 配置后端环境变量
+首次执行 `up.sh` 时会**自动**根据 `apps/api/.env.example` 创建或**合并** `apps/api/.env`（仅追加模板里尚未出现的变量，不覆盖已有值）。变量说明见下文 [环境变量](#环境变量) 与 [`apps/api/docs/DEVELOPMENT.md`](./apps/api/docs/DEVELOPMENT.md)。
 
-```bash
-cp apps/api/.env.example apps/api/.env
-# 按需修改 DATABASE_URL / JWT_ACCESS_SECRET 等
-```
-
-### 4. 启动全部服务
+### 一键启动与停止
 
 ```bash
-npm run dev:up
+bash scripts/up.sh
 ```
-
-脚本会自动完成：
-
-1. 启动 / 复用 `uniblog_postgres` 容器（5432 端口）。
-2. 等待数据库就绪后执行 `prisma generate` + `prisma migrate deploy`。
-3. 释放 3000 / 4000 端口后台启动 Web 与 API，并 tail 日志。
-
-启动完成后：
-
-- 前端：<http://localhost:3000>
-- API：<http://localhost:4000>（健康检查 `/health`）
-
-停止服务：
 
 ```bash
-npm run dev:stop
+bash scripts/down.sh
 ```
 
-## 常用脚本
-
-| 命令 | 说明 |
-| --- | --- |
-| `npm run dev:up` | 启动 Postgres + API + Web，并实时 tail 日志 |
-| `npm run dev:stop` | 停止由 `dev:up` 拉起的前后端进程并清理端口 |
-| `npm run dev:api` | 仅启动后端（`tsx watch`） |
-| `npm run dev:web` | 仅启动前端（`next dev`） |
-| `npm run build` | 构建前后端产物 |
-| `npm run lint` | 运行前后端 Lint |
-| `npm exec -w "@uniblog/api" prisma migrate dev` | 创建新迁移（修改 schema 后使用） |
-
-> 数据库相关命令请统一使用 `npm exec -w "@uniblog/api" <cmd>`（见 [.cursorrules](./.cursorrules)）。
+更多说明见 **[scripts/README.md](./scripts/README.md)**。
 
 ## 环境变量
 
-详细清单见 [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md#环境变量)。核心变量：
+详细清单见 [`apps/api/docs/DEVELOPMENT.md`](./apps/api/docs/DEVELOPMENT.md#环境变量)。核心变量：
 
 | 变量 | 默认值 | 作用 |
 | --- | --- | --- |
@@ -136,31 +113,35 @@ npm run dev:stop
 | `JWT_ACCESS_SECRET` | `dev_access_secret` | Access Token 签名密钥（**生产必改**） |
 | `JWT_ACCESS_EXPIRES_IN` | `24h` | Access Token 过期 |
 | `JWT_REFRESH_EXPIRES_DAYS` | `30` | Refresh Token 过期天数 |
-| `PORT` | `4000` | API 端口 |
+| `PORT` | `4000` | API **容器内**监听端口（宿主机映射见 `UNIBLOG_API_PORT`） |
 | `CORS_ORIGIN` | 未设置则允许任意 localhost | 逗号分隔的白名单 |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:4000` | 前端访问 API 的基址 |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:<API 端口>` | 由 `up.sh` 写入的 `UNIBLOG_API_PORT` 与 Compose 对齐 |
 
 ## 文档索引
+
+完整地图见 [docs/README.md](./docs/README.md)。
 
 | 文档 | 说明 |
 | --- | --- |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | 架构总览、模块划分、请求流程 |
-| [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | 开发流程、脚本、环境变量、常见问题 |
-| [docs/API.md](./docs/API.md) | 全部 REST 接口说明与响应格式 |
-| [docs/DATABASE.md](./docs/DATABASE.md) | 数据模型、索引、迁移约定 |
-| [docs/FRONTEND.md](./docs/FRONTEND.md) | 前端页面与组件结构 |
-| [CHANGELOG.md](./CHANGELOG.md) | 版本变更记录 |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | 贡献规范与「代码 + 文档同步」约定 |
+| [scripts/README.md](./scripts/README.md) | **一键启停**（`scripts/up.sh` / `down.sh`） |
+| [docker/README.md](./docker/README.md) | 容器架构、卷、环境变量与排错 |
+| [apps/api/docs/DEVELOPMENT.md](./apps/api/docs/DEVELOPMENT.md) | Docker 开发流程、环境变量、常见问题 |
+| [apps/api/docs/API.md](./apps/api/docs/API.md) | 全部 REST 接口说明与响应格式 |
+| [apps/api/docs/DATABASE.md](./apps/api/docs/DATABASE.md) | 数据模型、索引、迁移约定 |
+| [apps/web/docs/FRONTEND.md](./apps/web/docs/FRONTEND.md) | 前端页面与组件结构 |
+| [docs/CHANGELOG.md](./docs/CHANGELOG.md) | 版本变更记录 |
+| [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md) | 贡献规范与「代码 + 文档同步」约定 |
 
 ## 变更日志
 
-遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，见 [CHANGELOG.md](./CHANGELOG.md)。
+遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，见 [docs/CHANGELOG.md](./docs/CHANGELOG.md)。
 
 ## 贡献指南
 
-请先阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。核心约定：
+请先阅读 [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md)。核心约定：
 
-> **任何代码变更都必须同步更新相关文档**（README / docs/\* / CHANGELOG）。
+> **任何代码变更都必须同步更新相关文档**（README / docs / app docs / CHANGELOG）。
 
 ## License
 

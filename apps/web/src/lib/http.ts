@@ -17,6 +17,11 @@ export async function apiFetch<T>(
   path: string,
   options?: { method?: string; body?: unknown; headers?: Record<string, string> }
 ) {
+  if (!API_BASE_URL) {
+    throw new Error(
+      'NEXT_PUBLIC_API_BASE_URL 未设置。Docker 请使用 scripts/up.sh；本机请在 apps/web/.env.local 配置与 API 一致的基址。'
+    );
+  }
   const url = `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
   const method = options?.method || 'GET';
 
@@ -55,6 +60,7 @@ export async function apiFetch<T>(
   };
 
   const tryRefresh = async () => {
+    if (!API_BASE_URL) return false;
     const tokens = getTokens();
     if (!tokens?.refreshToken) return false;
     try {

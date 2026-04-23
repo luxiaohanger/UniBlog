@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiFetch } from '../../lib/http';
-import { getTokens } from '../../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 import PostCard from '../../components/PostCard';
 
 export default function CirclesPage() {

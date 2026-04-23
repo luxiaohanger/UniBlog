@@ -2,7 +2,7 @@
 
 基于 `apps/api/src/routes/*` 的当前实现整理，MVP 阶段全量接口列表。
 
-- **Base URL**（开发）：`http://localhost:4000`
+- **Base URL**（开发）：`http://localhost:<UNIBLOG_API_PORT>`（以 `scripts/up.sh` 终端输出与 `.dev-logs/ports.env` 为准；容器内 API 进程仍监听 `4000`）
 - **鉴权**：受保护接口需要 `Authorization: Bearer <accessToken>`。
 - **响应约定**：成功返回业务 JSON；失败返回 `{ error: '<snake_case_code>' }`，HTTP 状态码承担分类。
 - **时间字段**：ISO 8601 字符串（由 Prisma Date 序列化）。
@@ -454,4 +454,4 @@
 
 ## 变更约定
 
-> **任何路由新增 / 修改 / 删除都必须同步更新本文件**，并在 [CHANGELOG.md](../CHANGELOG.md) 添加一条记录（见 [CONTRIBUTING.md](../CONTRIBUTING.md)）。
+> **任何路由新增 / 修改 / 删除都必须同步更新本文件**，并在 [CHANGELOG.md](../../../docs/CHANGELOG.md) 添加一条记录（见 [CONTRIBUTING.md](../../../docs/CONTRIBUTING.md)）。

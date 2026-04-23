@@ -1,13 +1,14 @@
 # 开发指南
 
-本文档覆盖本地开发、环境变量、常用工作流、调试技巧。
+本文档覆盖 **Docker 一体化** 开发、环境变量、常用工作流与调试。**运行全栈**请使用 `bash scripts/up.sh`，说明见 [scripts/README.md](../../../scripts/README.md)；容器细节见 [docker/README.md](../../../docker/README.md)。
 
 ## 1. 先决条件
 
 | 工具 | 版本 | 备注 |
 | --- | --- | --- |
-| Node.js | ≥ 18（建议 20 LTS） | 需 `npm ≥ 9`（workspaces） |
-| Docker Desktop | 最新版 | 用于本地 Postgres |
+| Docker Desktop / Engine | 最新版 + Compose V2 | **一键启动必需** |
+| Node.js | ≥ 18（建议 20 LTS） | 可选：本机 `npm install` 仅服务编辑器 / Prisma CLI / CI |
+| npm | ≥ 9 | 可选：workspaces 类型提示 |
 | OpenSSL（可选） | 任意 | 生成 JWT Secret |
 
 ## 2. 首次初始化
@@ -15,36 +16,36 @@
 ```bash
 git clone <repo>
 cd uniblog
-npm install
-cp apps/api/.env.example apps/api/.env
-# 编辑 apps/api/.env，至少确认 DATABASE_URL 与 JWT_ACCESS_SECRET
-npm run dev:up
+bash scripts/up.sh
 ```
 
-首次运行 `dev:up` 会：
+`up.sh` 会自动创建或合并 `apps/api/.env`（见 `scripts/up.sh` 中 `ensure_api_env`）。首次拉栈后请按需编辑 **JWT_ACCESS_SECRET**、**SMTP** 等；容器内 `DATABASE_URL` 由 Compose 注入，无需改指向 localhost。
 
-1. 启动 `uniblog_postgres` 容器。
-2. 执行 Prisma 迁移（`migrate deploy`）。
-3. 拉起 Web（3000）与 API（4000）。
+可选（改善 IDE）：
 
-> 访问 <http://localhost:3000> 注册第一个账号即可。
+```bash
+npm install
+```
+
+首次运行 `up.sh` 会分配宿主机端口并写入 `.dev-logs/ports.env`，启动三个容器；API 入口内按需 `npm ci`、构建 shared、`prisma migrate deploy` 后启动 `tsx watch`。
+
+> 访问终端打印的前端 URL（`http://localhost:<UNIBLOG_WEB_PORT>`，由 `up.sh` 探测）注册第一个账号即可。
 
 ## 3. 日常命令
 
 | 场景 | 命令 |
 | --- | --- |
-| 一键启动前后端 + 数据库 | `npm run dev:up` |
-| 停止由 `dev:up` 拉起的进程 | `npm run dev:stop` |
-| 仅调试后端 | `npm run dev:api` |
-| 仅调试前端 | `npm run dev:web` |
-| 构建生产产物 | `npm run build` |
+| 一键启动（Docker：DB + API + Web） | `bash scripts/up.sh` |
+| 停止 Compose 栈 | `bash scripts/down.sh` |
+| 查看 API / Web 日志 | `docker compose -f docker/compose.yml --env-file .dev-logs/ports.env logs -f api web` |
+| 构建生产产物（CI / 校验） | `npm run build` |
 | Lint | `npm run lint` |
 | 新建数据库迁移 | `npm exec -w "@uniblog/api" prisma migrate dev --name <change>` |
 | 执行已提交迁移 | `npm exec -w "@uniblog/api" prisma migrate deploy` |
 | 打开 Prisma Studio | `npm exec -w "@uniblog/api" prisma studio` |
 | 重新生成 Prisma Client | `npm exec -w "@uniblog/api" prisma generate` |
 
-> 涉及 API / 数据库的命令请统一通过 `npm exec -w "@uniblog/api" <cmd>` 执行（见 [.cursorrules](../.cursorrules)）。
+> 涉及 API / 数据库的 CLI 请统一在仓库根执行 `npm exec -w "@uniblog/api" <cmd>`（见 [.cursorrules](../../../.cursorrules)）。
 
 ## 4. 环境变量
 
@@ -74,7 +75,7 @@ npm run dev:up
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:4000` | 前端 fetch 的 API 基址 |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:<API 端口>` | 前端 fetch 的 API 基址；Docker 开发下由 Compose 与 `UNIBLOG_API_PORT` 对齐（见 `.dev-logs/ports.env`） |
 
 ## 5. 数据库工作流
 
@@ -82,7 +83,7 @@ npm run dev:up
 2. 运行 `npm exec -w "@uniblog/api" prisma migrate dev --name <change>` 生成迁移。
 3. 迁移文件自动进入 `apps/api/prisma/migrations/`，务必 `git add`。
 4. 如需种子/回滚，手动写 SQL 脚本或通过 Prisma Studio 操作。
-5. 团队成员拉取代码后执行 `npm run dev:up`（内含 `migrate deploy`）。
+5. 团队成员拉取代码后执行 `bash scripts/up.sh`（内含 `migrate deploy`）。
 
 ### 数据重置
 
@@ -114,18 +115,17 @@ UPDATE "User" SET role = 'admin' WHERE username = '<你的用户名>';
 
 - TypeScript 严格模式，禁用 `any`（确需使用时显式注释原因）。
 - 样式：内联 `style={{}}` 优先；全局类放 `apps/web/src/app/globals.css`；禁止 `*.module.css`。
-- 所有交互必须有 Loading / Error 状态（见 [.cursorrules](../.cursorrules)）。
+- 所有交互必须有 Loading / Error 状态（见 [.cursorrules](../../../.cursorrules)）。
 - API 响应遵循 `{ error: 'snake_case_code' }` 失败语义。
 
 ## 8. 调试技巧
 
 | 场景 | 方法 |
 | --- | --- |
-| 查看 API 实时日志 | `tail -F .dev-logs/dev-api.log` |
-| 查看 Web 实时日志 | `tail -F .dev-logs/dev-web.log` |
-| 端口被占用 | `npm run dev:stop` 或 `lsof -i :4000` |
+| 查看 API / Web 日志 | `docker compose -f docker/compose.yml --env-file .dev-logs/ports.env logs -f api web`（或启动时 `up.sh` 已跟随） |
+| 端口被占用 | `bash scripts/down.sh` 或释放占用端口的进程 |
 | Prisma Client 不同步 | `npm exec -w "@uniblog/api" prisma generate` |
-| 容器连不上 | `docker compose ps`，必要时 `docker rm -f uniblog_postgres` 重来 |
+| 容器连不上 | `docker compose -f docker/compose.yml --env-file .dev-logs/ports.env ps`，必要时 `docker rm -f uniblog_postgres` 重来 |
 | Token 失效乱跳 | 打开 DevTools → LocalStorage 清 `accessToken / refreshToken` |
 
 ## 9. 常见问题（FAQ）
@@ -137,10 +137,10 @@ A: 确认前端访问的协议/端口为 `http://localhost:<port>`；或在 API 
 A: 单文件上限 50 MB，见 `apps/api/src/routes/posts.ts`。
 
 **Q: 401 后没有跳转登录？**
-A: 这是有意的（见 [.cursorrules](../.cursorrules) 第 4 条）。业务页面需自行 `getTokens()` 判空并手动 `router.replace('/login')`。
+A: 这是有意的（见 [.cursorrules](../../../.cursorrules) 第 4 条）。业务页面需自行 `getTokens()` 判空并手动 `router.replace('/login')`。
 
 **Q: 评论显示「层」错乱？**
-A: 新数据依赖 `layerMainId`；历史数据靠开头 `@用户名` 兼容。若两边同时修改了 `commentTree.ts`，请保证**前后端语义一致**。
+A: 新数据依赖 `layerMainId`；历史数据靠开头 `@用户名` 兼容。评论树逻辑集中在 `packages/shared`（`buildCommentTree`），修改一处即可保持前后端一致。
 
 ## 10. 部署（简述）
 

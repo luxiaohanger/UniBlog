@@ -3,6 +3,8 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import { config } from './lib/config';
+import { logger } from './lib/logger';
 import { authRouter } from './routes/auth';
 import { postsRouter } from './routes/posts';
 import { socialRouter } from './routes/social';
@@ -23,12 +25,12 @@ export function createApp() {
         const raw = origin || '';
         if (!raw) return callback(null, true);
 
-        const envOrigins = process.env.CORS_ORIGIN
-          ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+        const envOrigins = config.corsOriginRaw
+          ? config.corsOriginRaw.split(',').map((s) => s.trim())
           : [];
         if (envOrigins.includes('*') || envOrigins.includes(raw)) return callback(null, true);
 
-        // 兜底：允许任何 localhost:端口（解决你当前前端 3000 与后端 3003 不一致的问题）
+        // 兜底：允许任意 http://localhost:*（开发期前后端宿主机端口由 up.sh 动态分配）
         if (raw.startsWith('http://localhost:')) return callback(null, true);
 
         return callback(null, false);
@@ -36,7 +38,7 @@ export function createApp() {
       credentials: true,
     })
   );
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: config.jsonBodyLimit }));
   app.use(cookieParser());
 
   app.get('/health', (_req, res) => {
@@ -60,7 +62,7 @@ export function createApp() {
       res: express.Response,
       _next: express.NextFunction
     ) => {
-      console.error(err);
+      logger.error({ err }, 'express_error');
       const anyErr = err as any;
 
       if (anyErr?.name === 'MulterError') {

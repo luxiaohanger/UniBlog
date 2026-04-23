@@ -4,15 +4,14 @@
   "private": true,
   "description": "UniBlog",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "dev:api": "npm run dev -w \"@uniblog/api\"",
-    "dev:web": "npm run dev -w \"@uniblog/web\"",
-    "dev:up": "bash ./scripts/dev-up.sh",
-    "dev:stop": "bash ./scripts/dev-stop.sh",
-    "build": "npm run build -w \"@uniblog/api\" && npm run build -w \"@uniblog/web\"",
-    "lint": "npm run lint -w \"@uniblog/api\" && npm run lint -w \"@uniblog/web\""
+    "build": "npm run build -w \"@uniblog/shared\" && npm run build -w \"@uniblog/api\" && npm run build -w \"@uniblog/web\"",
+    "lint": "npm run lint -w \"@uniblog/api\" && npm run lint -w \"@uniblog/web\"",
+    "test": "npm run test -w \"@uniblog/shared\" && npm run test -w \"@uniblog/api\"",
+    "prisma:validate": "npm exec -w \"@uniblog/api\" prisma validate"
   },
   "keywords": [],
   "author": "",

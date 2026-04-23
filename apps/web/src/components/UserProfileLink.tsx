@@ -3,8 +3,8 @@
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { apiFetch } from '../lib/http';
-import { getTokens } from '../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 
 type Props = {
   userId: string;

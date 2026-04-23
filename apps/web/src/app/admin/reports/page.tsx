@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { apiFetch } from '../../../lib/http';
-import { getTokens } from '../../../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 import Avatar from '../../../components/Avatar';
 import Modal from '../../../components/Modal';
 

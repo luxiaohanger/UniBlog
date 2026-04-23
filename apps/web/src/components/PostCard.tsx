@@ -3,9 +3,10 @@
 import { useEffect, useState, useLayoutEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { apiFetch } from '../lib/http';
-import { getTokens } from '../lib/token';
-import { buildCommentTree } from '../lib/commentTree';
+import { apiFetch } from '@/features/client/http';
+import { API_BASE_URL } from '@/features/client/config';
+import { getTokens } from '@/features/client/token';
+import { buildCommentTree } from '@/features/shared';
 import { parseReplyDisplay } from '../lib/replyDisplay';
 import { UserProfileLink, AtUserLink } from './UserProfileLink';
 import Avatar from './Avatar';
@@ -871,10 +872,10 @@ export default function PostCard({
                     borderRadius: '8px',
                   }}
                   onDoubleClick={() =>
-                    setPreviewImageUrl(`http://localhost:4000${media.url}`)
+                    setPreviewImageUrl(`${API_BASE_URL}${media.url}`)
                   }
                 >
-                  <img src={`http://localhost:4000${media.url}`} alt="Media" />
+                  <img src={`${API_BASE_URL}${media.url}`} alt="Media" />
                 </div>
               ))}
             </div>

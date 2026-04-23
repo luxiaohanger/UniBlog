@@ -23,16 +23,18 @@
 ```text
 uniblog/
 ├── apps/
-│   ├── api/                 # 后端包 @uniblog/api
-│   └── web/                 # 前端包 @uniblog/web
-├── scripts/                 # 本地开发脚本
-├── docs/                    # 项目文档（本目录）
-├── docker-compose.yml       # 本地 Postgres
+│   ├── api/                 # 后端包 @uniblog/api（含 prisma/、docs/：API / DB / 开发指南）
+│   └── web/                 # 前端包 @uniblog/web（含 docs/：前端说明）
+├── packages/
+│   └── shared/              # @uniblog/shared（评论树、错误码常量等）
+├── scripts/                 # up.sh / down.sh + README（Bash 启停 Compose）
+├── docs/                    # 架构、CHANGELOG、CONTRIBUTING、索引（本目录）
+├── docker/                  # compose.yml、入口脚本 + README
 ├── package.json             # npm workspaces 根
 └── .cursorrules             # 工作空间开发规范
 ```
 
-使用 `npm workspaces` 管理包，根目录 `package.json` 暴露 `dev:*` / `build` / `lint` 等跨包脚本。
+使用 `npm workspaces` 管理包；**一键启停**用 `bash scripts/up.sh` / `down.sh`（见 [scripts/README.md](../scripts/README.md)）。根 `package.json` 另有 `build` / `lint` / `test` / `prisma:validate`（CI 与本地校验，不替代 Docker 运行全栈）。
 
 ## 3. 后端架构（@uniblog/api）
 
@@ -40,23 +42,31 @@ uniblog/
 
 ```text
 src/
-├── index.ts          # 加载 .env → 启动 app
+├── index.ts          # 启动 HTTP 服务（环境变量由 lib/config 加载 apps/api/.env）
 ├── app.ts            # Express 装配：CORS / JSON / cookie / 静态资源 / 路由 / 错误兜底
-├── routes/
-│   ├── auth.ts       # /auth/*  （注册、登录、刷新、登出、当前用户）
-│   ├── posts.ts      # /posts/* （发帖、Feed、作者、置顶、详情、删除、收藏列表）
-│   └── social.ts     # /social/*（评论、点赞、收藏、转发、好友、私信、通知）
+├── routes/           # 薄路由：鉴权 / multer / zod 解析 / 调 services
+│   ├── auth.ts
+│   ├── posts.ts
+│   ├── social.ts
+│   └── reports.ts
+├── services/         # 用例与 Prisma 编排（auth / posts / social / reports）
+├── validators/       # zod Schema（与 routes 一一对应）
 ├── middleware/
 │   └── auth.ts       # requireAuth() —— JWT 校验并注入 req.user
 ├── lib/
 │   ├── prisma.ts     # 全局单例 PrismaClient
 │   ├── auth.ts       # sign/verify access、createRefreshToken、hashToken
-│   ├── roles.ts      # isUserAdmin()
-│   └── commentTree.ts# 评论树构建（与前端保持一致的语义）
+│   ├── config.ts     # 集中环境变量
+│   ├── logger.ts     # pino 实例
+│   ├── serviceError.ts / routeError.ts / parseRequest.ts
+│   ├── uploads.ts    # 上传目录与安全 unlink
+│   └── roles.ts      # isUserAdmin()
 └── prisma/
     ├── schema.prisma # 数据模型
     └── migrations/   # 迁移文件（提交进仓库）
 ```
+
+评论树构建见 monorepo 包 `@uniblog/shared`（`buildCommentTree`），前后端共用同一实现。
 
 ### 3.2 设计约束
 
@@ -68,7 +78,7 @@ src/
 
 ### 3.3 评论分层模型
 
-见 `lib/commentTree.ts`：
+见 `packages/shared` 中 `buildCommentTree`：
 
 - 顶层评论（层主）：`layerMainId === null`。
 - 同层回复：`layerMainId` 指向层主；写入时由 `/social/posts/:postId/comments` 校验层主合法性。
@@ -93,7 +103,8 @@ src/app/
 
 ### 4.2 关键约定
 
-- **状态 / 请求**：统一走 `src/lib/http.ts`（封装 401 自动刷新）+ SWR。
+- **状态 / 请求**：统一走 `src/lib/http.ts`（封装 401 自动刷新）+ SWR；业务侧推荐从 `src/features/client/http` 引用以便按域演进。
+- **共用领域逻辑**：`src/features/shared` 再导出 `@uniblog/shared`（如 `buildCommentTree`、`ApiErrors`）。
 - **鉴权**：Token 存 `localStorage`（见 `lib/token.ts`）。`http.ts` 收到 401 时先尝试 `refresh`，仍失败再 `clearTokens()`。**401 不会自动跳转**，需要登录拦截的页面需在组件内自行处理。
 - **样式**：优先内联 `style={{}}`；复用动画/交互类放在 `src/app/globals.css`。**严禁新增 `*.module.css`**（见 [.cursorrules](../.cursorrules)）。
 - **未读红点**：`lib/unread.ts` 本地维护 `lastSeen / unread` 映射；`Header.tsx` 轮询消息和通知并驱动根节点红点。
@@ -115,19 +126,11 @@ Page (SWR) ──► apiFetch('/auth/me') ──► fetch(Bearer AT) ──► A
 - Postgres 16（Docker 本地卷 `postgres_data`）。
 - Prisma 负责 Schema 定义、迁移、类型生成。
 - 所有结构变更通过迁移落库：`prisma migrate dev --name <change>`，并提交到 `apps/api/prisma/migrations/`。
-- 详细表结构、索引、级联策略见 [DATABASE.md](./DATABASE.md)。
+- 详细表结构、索引、级联策略见 [DATABASE.md](../apps/api/docs/DATABASE.md)。
 
 ## 6. 本地编排
 
-`scripts/dev-up.sh` 负责：
-
-1. `docker compose up -d`（冲突时自动清理残留容器）。
-2. 轮询 `pg_isready` 直至数据库就绪。
-3. `prisma generate` + `prisma migrate deploy` 保证 schema 同步。
-4. 释放 3000 / 4000 端口后用 `nohup` 拉起前后端，PID 写入 `.dev-logs/`。
-5. `tail -F` 实时跟随日志；Ctrl+C 仅退出 tail，不影响后台进程。
-
-`scripts/dev-stop.sh` 读取 PID 文件结束进程，并兜底清理端口。
+默认通过 **Docker Compose**（[`docker/compose.yml`](../docker/compose.yml)）在容器内运行 Postgres、API（`docker/entrypoint-api-dev.sh`）与 Web（`docker/entrypoint-web-dev.sh`）。**启停**由 Bash 脚本完成，见 [scripts/README.md](../scripts/README.md)（`scripts/up.sh`、`scripts/down.sh`）：检查 Docker、探测宿主机端口、写入 `.dev-logs/ports.env`、`docker compose -f docker/compose.yml up`、跟随日志；`down.sh` 执行 `compose down` 并保留卷。容器与排错见 [docker/README.md](../docker/README.md)。
 
 ## 7. 扩展点与未来方向
 

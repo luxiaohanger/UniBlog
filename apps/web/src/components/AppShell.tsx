@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Header from './Header';
-import { getTokens } from '../lib/token';
+import { getTokens } from '@/features/client/token';
 
 /** 未登录仅允许访问：首页、登录、注册、找回密码 */
 const PUBLIC_PATHS = new Set(['/', '/login', '/register', '/forgot-password']);

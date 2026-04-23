@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getTokens } from '../lib/token';
+import { getTokens } from '@/features/client/token';
 
 const FEATURES = [
   { icon: '💬', title: '即时互动', desc: '发帖评论、好友私信，实时收到通知' },

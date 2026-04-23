@@ -31,14 +31,18 @@ apps/web/src/
 │   ├── ReportButton.tsx   # 通用举报入口（帖子 / 评论 / 用户，弹窗填写理由）
 │   ├── Modal.tsx          # 统一弹窗（Portal 渲染到 body，规避 backdrop-filter 截断）
 │   └── UserProfileLink.tsx# 用户名跳转（接收 displayName，优先展示）
+├── features/
+│   ├── client/            # 统一入口：http / token / config（再导出 lib/*）
+│   └── shared/            # 再导出 @uniblog/shared（buildCommentTree、ApiErrors）
 └── lib/
     ├── http.ts            # apiFetch（带 401 auto refresh）
     ├── token.ts           # Access/Refresh/用户名持久化
-    ├── config.ts          # API_BASE_URL
-    ├── commentTree.ts     # 与后端 commentTree 对齐的层级构建
+    ├── config.ts          # API_BASE_URL（须 NEXT_PUBLIC_API_BASE_URL，Docker 由 compose 注入）
     ├── replyDisplay.ts    # 回复展示辅助
     └── unread.ts          # 未读红点状态（lastSeen + unread + 订阅）
 ```
+
+评论层级构建已迁入 monorepo 包 `@uniblog/shared`，前端通过 `features/shared` 或直连包名引用。
 
 ### 1.1 公开路由（无需登录）
 
@@ -118,7 +122,7 @@ const { data } = useSWR<Feed>(
 3. 数据：`useSWR` + `apiFetch`；避免直接 `fetch` 丢失鉴权逻辑。
 4. 交互：必须包含 Loading / Empty / Error 三态。
 5. 样式：`style={{}}` 或 `globals.css` 已有类。
-6. 若新增文案/提示，保持中文；错误映射参考 [`docs/API.md`](./API.md) 的错误码。
+6. 若新增文案/提示，保持中文；错误映射参考 [`API.md`](../../api/docs/API.md) 的错误码。
 7. 更新本文档「目录结构」与「路由与登录拦截」相关段落。
 
 ## 7. 组件复用要点

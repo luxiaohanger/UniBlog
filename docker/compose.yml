@@ -1,0 +1,78 @@
+# UniBlog 一体化开发环境：Postgres + API + Web
+# 本文件位于 docker/，卷挂载使用 .. 指向仓库根目录
+# 宿主机端口由 scripts/up.sh 写入 .dev-logs/ports.env
+# 启停说明: scripts/README.md
+# 详见 docker/README.md
+
+name: uniblog
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: uniblog_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: uniblog
+    ports:
+      - "${UNIBLOG_PG_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    image: node:20-bookworm
+    container_name: uniblog_api_dev
+    working_dir: /app
+    volumes:
+      - ..:/app:cached
+      - uniblog_node_modules:/app/node_modules
+    environment:
+      NODE_ENV: development
+      # 容器内始终连服务名 postgres，与宿主机映射端口无关
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/uniblog
+      PORT: "4000"
+    ports:
+      - "${UNIBLOG_API_PORT}:4000"
+    # JWT/SMTP 等见 apps/api/.env（仓库绑定挂载 .. → /app，由 dotenv 读取）
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/bin/bash", "/app/docker/entrypoint-api-dev.sh"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "require(\"http\").get(\"http://127.0.0.1:4000/health\",r=>process.exit(r.statusCode===200?0:1)).on(\"error\",()=>process.exit(1))"',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 600s
+
+  web:
+    image: node:20-bookworm
+    container_name: uniblog_web_dev
+    working_dir: /app
+    volumes:
+      - ..:/app:cached
+      - uniblog_node_modules:/app/node_modules
+    environment:
+      NODE_ENV: development
+      # 浏览器在宿主机访问 API，须用宿主机映射端口（与 UNIBLOG_API_PORT 一致）
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${UNIBLOG_API_PORT}
+    ports:
+      - "${UNIBLOG_WEB_PORT}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["/bin/bash", "/app/docker/entrypoint-web-dev.sh"]
+
+volumes:
+  postgres_data:
+  uniblog_node_modules:

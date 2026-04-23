@@ -3,13 +3,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { apiFetch } from '../lib/http';
+import { apiFetch } from '@/features/client/http';
 import {
   getTokens,
   clearTokens,
   getStoredDisplayUsername,
   setStoredDisplayUsername,
-} from '../lib/token';
+} from '@/features/client/token';
 import {
   getLastSeenMap,
   getSystemReadKeySet,

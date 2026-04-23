@@ -6,7 +6,7 @@ Schema 源：[`apps/api/prisma/schema.prisma`](../apps/api/prisma/schema.prisma)
 
 - DBMS：PostgreSQL 16
 - 默认 DSN：`postgresql://postgres:postgres@localhost:5432/uniblog`
-- 连接通过 `DATABASE_URL` 注入，本地由 `docker-compose.yml` 提供。
+- 连接通过 `DATABASE_URL` 注入，本地由 `docker/compose.yml`（Compose 栈）提供。
 
 ## 2. 模型总览
 
@@ -178,7 +178,7 @@ enum ReportStatus     { open resolved rejected }
    npm exec -w "@uniblog/api" prisma migrate dev --name <change>
    ```
 3. 提交 `apps/api/prisma/migrations/<timestamp>_<change>/` 整个目录。
-4. 团队拉取后：`npm run dev:up`（内部 `migrate deploy`）。
+4. 团队拉取后：`bash scripts/up.sh`（内部 `migrate deploy`）。
 5. CI / 生产部署前执行 `prisma migrate deploy`。
 
 ### 已有迁移（截至文档撰写时）
@@ -199,7 +199,7 @@ enum ReportStatus     { open resolved rejected }
 
 - **不要**在代码里手写 SQL 修改 schema；一律走 Prisma 迁移。
 - 索引变更需说明理由（查询路径 / 数据规模）。
-- 新增字段**必须**更新本文件 & `docs/API.md`（若影响响应结构）。
+- 新增字段**必须**更新本文件 & [`API.md`](./API.md)（若影响响应结构）。
 - 删除字段需评估对历史迁移的影响，尽量「先兼容、再清理」。
 
 > **变更约定**：Schema 任何修改必须在同一 PR 中更新本文件的「模型详解」与「迁移流程 · 已有迁移」。

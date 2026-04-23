@@ -27,32 +27,35 @@
 
 ### 6.1 文档地图
 - 总览与快速开始：@README.md
+- 文档索引：@docs/README.md
 - 架构与模块划分：@docs/ARCHITECTURE.md
-- 开发流程与环境变量：@docs/DEVELOPMENT.md
-- REST API 清单：@docs/API.md
-- 数据模型与迁移：@docs/DATABASE.md
-- 前端页面与组件：@docs/FRONTEND.md
-- 版本变更：@CHANGELOG.md
-- 贡献规范：@CONTRIBUTING.md
+- 开发流程与环境变量：@apps/api/docs/DEVELOPMENT.md
+- 一键脚本：@scripts/README.md
+- Docker 细节：@docker/README.md
+- REST API 清单：@apps/api/docs/API.md
+- 数据模型与迁移：@apps/api/docs/DATABASE.md
+- 前端页面与组件：@apps/web/docs/FRONTEND.md
+- 版本变更：@docs/CHANGELOG.md
+- 贡献规范：@docs/CONTRIBUTING.md
 
 ### 6.2 变更触发的文档更新
 | 变更类型 | 必改文档 |
 | --- | --- |
-| 新增/修改/删除 API 路由或响应字段 | @docs/API.md；必要时 @docs/ARCHITECTURE.md |
-| 修改 Prisma schema 或新增迁移 | @docs/DATABASE.md（含「已有迁移」列表） |
-| 新增/重命名/删除前端页面或关键组件 | @docs/FRONTEND.md |
-| 修改开发脚本 / 环境变量 / 启动流程 | @README.md、@docs/DEVELOPMENT.md、@apps/api/.env.example |
+| 新增/修改/删除 API 路由或响应字段 | @apps/api/docs/API.md；必要时 @docs/ARCHITECTURE.md |
+| 修改 Prisma schema 或新增迁移 | @apps/api/docs/DATABASE.md（含「已有迁移」列表） |
+| 新增/重命名/删除前端页面或关键组件 | @apps/web/docs/FRONTEND.md |
+| 修改开发脚本 / 环境变量 / 启动流程 | @README.md、@scripts/README.md、@docker/compose.yml、@docker/README.md、@apps/api/docs/DEVELOPMENT.md、@apps/api/.env.example |
 | 架构级重构（新增包 / 拆分模块） | @docs/ARCHITECTURE.md、@README.md「项目结构」 |
-| 任意用户可感知的变更 | @CHANGELOG.md 的 `[Unreleased]` 段落追加条目 |
+| 任意用户可感知的变更 | @docs/CHANGELOG.md 的 `[Unreleased]` 段落追加条目 |
 
 ### 6.3 Agent 执行流程
 在完成代码修改后，Agent 必须：
 1. 对照上表判断需要同步的文档。
 2. 在同一次会话/PR 内更新这些文档，确保描述与新代码一致。
-3. 在 @CHANGELOG.md 的 `[Unreleased]` 下追加一条对应类别（Added / Changed / Fixed / Removed 等）的中文条目。
-4. 若本次改动新增了环境变量，同时更新 @apps/api/.env.example 与 @docs/DEVELOPMENT.md「环境变量」章节。
+3. 在 @docs/CHANGELOG.md 的 `[Unreleased]` 下追加一条对应类别（Added / Changed / Fixed / Removed 等）的中文条目。
+4. 若本次改动新增了环境变量，同时更新 @apps/api/.env.example 与 @apps/api/docs/DEVELOPMENT.md「环境变量」章节。
 5. 不要创建重复文档；已有文档章节缺失时优先补充而非新建文件。
 6. 完成后简要在回复中告知用户「已同步的文档列表」。
 
 ### 6.4 Commit 约定
-遵循 Conventional Commits：`feat(scope): ...` / `fix(scope): ...` / `docs(scope): ...` 等，`scope` 使用 `api` / `web` / `db` / `scripts` / `docs` 之一。详见 @CONTRIBUTING.md。
+遵循 Conventional Commits：`feat(scope): ...` / `fix(scope): ...` / `docs(scope): ...` 等，`scope` 使用 `api` / `web` / `db` / `scripts` / `docs` 之一。详见 @docs/CONTRIBUTING.md。

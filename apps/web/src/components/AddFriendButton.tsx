@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
-import { apiFetch } from '../lib/http';
-import { getTokens } from '../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 import { useRouter } from 'next/navigation';
 
 type Relationship =

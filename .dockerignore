@@ -1,0 +1,10 @@
+# 加速构建与减小同步量；开发卷挂载仍忽略这些路径
+.git
+.github
+**/.next
+**/node_modules
+**/dist
+.dev-logs
+*.log
+apps/api/uploads
+.DS_Store

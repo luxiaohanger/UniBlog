@@ -2,8 +2,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiFetch } from '../../lib/http';
-import { setTokens, setStoredDisplayUsername } from '../../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { setTokens, setStoredDisplayUsername } from '@/features/client/token';
 
 export default function LoginPage() {
   const router = useRouter();

@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+### Changed
+- **README**：「快速开始」增加 macOS / Linux / Windows 对照说明；Windows 须使用 **Git Bash** 执行 `bash scripts/up.sh` / `down.sh`。
+- **scripts/README.md**：新增「各系统安装 Docker（简引）」表（macOS / Windows / Linux 官方文档入口与要点）；删「裸机仅有 Docker + git」长段，改为最简流程中简述须 `git clone`（或 zip）后进入根目录再 `up.sh`。
+- **宿主机端口**：`docker/compose.yml` 中 `UNIBLOG_*_PORT` 与 `NEXT_PUBLIC_API_BASE_URL` 不再设默认值，必须由 `scripts/up.sh` 写入的 `.dev-logs/ports.env`（或等价环境变量）提供；`up.sh` 在文件顶部集中定义探测区间，统一用 `choose_port` 选首个空闲端口。`down.sh` 在无 `ports.env` 时按容器名删除栈。前端移除 `localhost:4000` 硬编码，统一使用 `NEXT_PUBLIC_API_BASE_URL`（`PostCard` 媒体 URL 等）。
+- **仓库根目录精简**：开发用 Compose 迁至 [`docker/compose.yml`](../docker/compose.yml)（绑定挂载 `..:/app`）；`CHANGELOG.md` 与 `CONTRIBUTING.md` 迁至 `docs/`；`scripts/up.sh`、`down.sh` 使用 `docker compose -f docker/compose.yml`。
+- **脚本与 Docker 工作流**：`scripts/` 仅保留 `up.sh`、`down.sh`（Bash）；合并原 `dev-up.sh`、可选 `git clone`、原 `dev-stop.sh`；删除 `dev-up.sh`、`dev-stop.sh`、`docker-oneclick.sh`。根 `package.json` 移除 `dev:up` / `dev:stop`。说明迁至 [scripts/README.md](../scripts/README.md)；容器细节见 [docker/README.md](../docker/README.md)。Compose 栈仍为 Postgres + API + Web（`node:20-bookworm`）、`docker/entrypoint-*-dev.sh`、`.dev-logs/ports.env` 端口探测。
+- **文档目录**：`API.md` / `DATABASE.md` 迁至 `apps/api/docs/`；`FRONTEND.md` 迁至 `apps/web/docs/`；开发指南迁至 `apps/api/docs/DEVELOPMENT.md`；根目录新增 [docs/README.md](./README.md) 索引；移除根目录 `docs/SCRIPTS.md`、`docs/DOCKER.md` 等重复文件。**开发与本地全栈运行**统一为 Docker 一键；根 `package.json` 移除 `dev:api` / `dev:web`。
+
+### Added
+- **Monorepo 共享包**：新增 `@uniblog/shared`（`packages/shared`），收录 `buildCommentTree` 与 `ApiErrors` 等前后端共用逻辑；根 `workspaces` 纳入 `packages/*`。
+- **API 分层**：`routes` 薄化，业务迁入 `services/*`；请求体验证使用 `zod`（`validators/*`）；统一 `ServiceError` + `sendRouteError` 映射 JSON 错误。
+- **配置与日志**：`lib/config.ts` 集中读取环境变量（含在模块内加载 `apps/api/.env`）；`pino` 结构化日志用于路由错误与 Express 兜底处理器。
+- **前端 features**：`src/features/client/*` 作为 HTTP / Token / Config 的统一入口；`src/features/shared` 再导出 `@uniblog/shared`；`tsconfig` 增加 `@/*` 路径别名。
+- **测试与 CI**：`vitest` 覆盖 `commentTree` 单元与 `GET /health` 集成 smoke；根脚本 `test`、`prisma:validate`；GitHub Actions `ci.yml`（validate + lint + test + build）。
+
+## [1.4.0] - 2026-04-21
+
 ### Added
 - **举报与管理员审核**：新增 `Report` 模型与 `ReportTargetType` / `ReportStatus` 枚举（迁移 `20260421134003_add_report`）；接口新增 `POST /social/reports`（帖子 / 评论 / 用户三类举报，同目标单举报人仅允许一条 open）、`GET /social/admin/reports`、`PATCH /social/admin/reports/:reportId`。审核通过（resolve）时自动联动删帖 / 删评论、清理对应 `SystemNotification`，并写入 `report_resolved` 通知给被处理者；同目标的其它 open 举报会自动置为 resolved。
 - **前端举报入口 & 管理页**：新增 `ReportButton` 组件，接入 `PostCard` 的「⋮」菜单（帖子举报）、评论行尾（评论举报）与他人主页（用户举报）；新增 `/admin/reports` 管理员审核页（按 `open/resolved/rejected/all` 筛选，支持通过/驳回并填写留言）；`Header` 在 `role=admin` 时显示「管理」导航并轮询 open 举报红点；消息中心新增 `report_resolved` 通知文案。

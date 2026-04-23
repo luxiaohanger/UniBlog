@@ -2,8 +2,8 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { apiFetch } from '../../lib/http';
-import { getTokens } from '../../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 import Avatar from '../../components/Avatar';
 
 type MeUser = {

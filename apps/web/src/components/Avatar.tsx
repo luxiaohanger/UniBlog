@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { API_BASE_URL } from '../lib/config';
+import { API_BASE_URL } from '@/features/client/config';
 
 type Props = {
   /** 后端返回的相对 URL，形如 `/uploads/avatar-xxx.jpg`；为空则回退到首字母 */

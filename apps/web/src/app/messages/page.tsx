@@ -2,8 +2,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
-import { apiFetch } from '../../lib/http';
-import { getTokens } from '../../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Avatar from '../../components/Avatar';
 import {

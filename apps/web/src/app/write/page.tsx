@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '../../lib/http';
-import { getTokens } from '../../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 
 const MAX_POST_LINES = 20;
 const MAX_IMAGES = 3;

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, type CSSProperties } from 'react';
-import { apiFetch } from '../lib/http';
-import { getTokens } from '../lib/token';
+import { apiFetch } from '@/features/client/http';
+import { getTokens } from '@/features/client/token';
 import Modal from './Modal';
 
 type TargetType = 'post' | 'comment' | 'user';
