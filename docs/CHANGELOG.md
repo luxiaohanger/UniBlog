@@ -14,12 +14,15 @@
 - **脚本与 Docker 工作流**：`scripts/` 仅保留 `up.sh`、`down.sh`（Bash）；合并原 `dev-up.sh`、可选 `git clone`、原 `dev-stop.sh`；删除 `dev-up.sh`、`dev-stop.sh`、`docker-oneclick.sh`。根 `package.json` 移除 `dev:up` / `dev:stop`。说明迁至 [scripts/README.md](../scripts/README.md)；容器细节见 [docker/README.md](../docker/README.md)。Compose 栈仍为 Postgres + API + Web（`node:20-bookworm`）、`docker/entrypoint-*-dev.sh`、`.dev-logs/ports.env` 端口探测。
 - **文档目录**：`API.md` / `DATABASE.md` 迁至 `apps/api/docs/`；`FRONTEND.md` 迁至 `apps/web/docs/`；开发指南迁至 `apps/api/docs/DEVELOPMENT.md`；根目录新增 [docs/README.md](./README.md) 索引；移除根目录 `docs/SCRIPTS.md`、`docs/DOCKER.md` 等重复文件。**开发与本地全栈运行**统一为 Docker 一键；根 `package.json` 移除 `dev:api` / `dev:web`。
 
+### Removed
+- **GitHub Actions**：仓库内移除 `.github/workflows/ci.yml`（此前为新增文件；无该文件时 HTTPS PAT 无需 `workflow` scope 即可推送）。本地与 PR 前仍请执行 `npm run lint` / `test` / `build`。
+
 ### Added
 - **Monorepo 共享包**：新增 `@uniblog/shared`（`packages/shared`），收录 `buildCommentTree` 与 `ApiErrors` 等前后端共用逻辑；根 `workspaces` 纳入 `packages/*`。
 - **API 分层**：`routes` 薄化，业务迁入 `services/*`；请求体验证使用 `zod`（`validators/*`）；统一 `ServiceError` + `sendRouteError` 映射 JSON 错误。
 - **配置与日志**：`lib/config.ts` 集中读取环境变量（含在模块内加载 `apps/api/.env`）；`pino` 结构化日志用于路由错误与 Express 兜底处理器。
 - **前端 features**：`src/features/client/*` 作为 HTTP / Token / Config 的统一入口；`src/features/shared` 再导出 `@uniblog/shared`；`tsconfig` 增加 `@/*` 路径别名。
-- **测试与 CI**：`vitest` 覆盖 `commentTree` 单元与 `GET /health` 集成 smoke；根脚本 `test`、`prisma:validate`；GitHub Actions `ci.yml`（validate + lint + test + build）。
+- **测试与 CI**：`vitest` 覆盖 `commentTree` 单元与 `GET /health` 集成 smoke；根脚本 `test`、`prisma:validate`（GitHub Actions 工作流可后续按需加回）。
 
 ## [1.4.0] - 2026-04-21
 

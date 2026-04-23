@@ -140,6 +140,6 @@ Page (SWR) ──► apiFetch('/auth/me') ──► fetch(Bearer AT) ──► A
 | 通知持久化 | 当前点赞/收藏通知由查询聚合而来，可迁移到 `SystemNotification` 表 |
 | 实时消息 | 引入 WebSocket（Socket.IO）替代当前 3s 轮询 |
 | 测试 | 补充 Vitest / Supertest，覆盖鉴权与评论树核心用例 |
-| CI | 接入 GitHub Actions：lint → build → migration check |
+| CI | 可选接入 GitHub Actions；当前仓库未提交 workflow，用根目录 `npm run lint` / `test` / `build` 做本地与 PR 前校验 |
 
 > 本文件随架构变更同步更新。新增模块或改变请求流时，请同步调整第 3 / 4 节。
